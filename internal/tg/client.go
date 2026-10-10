@@ -3,6 +3,7 @@ package tg
 import (
 	"context"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -59,10 +60,11 @@ type interactiveUserAuth struct {
 
 func (a *interactiveUserAuth) Phone(_ context.Context) (string, error) { return a.phone, nil }
 
-func (a *interactiveUserAuth) Code(ctx context.Context, _ *tg.AuthSentCode) (string, error) {
+func (a *interactiveUserAuth) Code(ctx context.Context, sentCode *tg.AuthSentCode) (string, error) {
 	if a.onCode != nil {
 		a.onCode()
 	}
+	log.Printf("login: code requested, sent_code_type=%s phone_code_hash=%s", sentCode.TypeName(), sentCode.PhoneCodeHash)
 	select {
 	case code := <-a.codeCh:
 		return code, nil
@@ -75,6 +77,7 @@ func (a *interactiveUserAuth) Password(ctx context.Context) (string, error) {
 	if a.onPass != nil {
 		a.onPass()
 	}
+	log.Printf("login: 2FA password requested")
 	select {
 	case p := <-a.passCh:
 		return p, nil
@@ -104,11 +107,14 @@ func (m *Manager) Login(
 	if err != nil {
 		return err
 	}
+	log.Printf("login: start user=%d phone=%q", userID, phone)
 	ua := &interactiveUserAuth{phone: phone, codeCh: codeCh, passCh: passCh, onCode: onCode, onPass: onPass}
 	flow := auth.NewFlow(ua, auth.SendCodeOptions{})
-	return client.Run(ctx, func(ctx context.Context) error {
+	err = client.Run(ctx, func(ctx context.Context) error {
 		return client.Auth().IfNecessary(ctx, flow)
 	})
+	log.Printf("login: result user=%d err=%v", userID, err)
+	return err
 }
 
 // Search looks for the given query in the listed channels using the user's
