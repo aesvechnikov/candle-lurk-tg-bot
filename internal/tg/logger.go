@@ -10,7 +10,8 @@ import (
 )
 
 // gotdLogger bridges gotd's structured logger to the stdlib log package, so
-// connection/auth events end up in stderr (captured by journald).
+// connection/auth events end up in stderr (captured by journald). Only
+// Info-level and above is recorded to keep the journal small.
 type gotdLogger struct{}
 
 func (gotdLogger) Enabled(_ context.Context, level gotdlog.Level) bool {
@@ -18,6 +19,9 @@ func (gotdLogger) Enabled(_ context.Context, level gotdlog.Level) bool {
 }
 
 func (gotdLogger) Log(_ context.Context, level gotdlog.Level, msg string, attrs ...gotdlog.Attr) {
+	if level < gotdlog.LevelInfo {
+		return
+	}
 	parts := make([]string, 0, len(attrs))
 	for _, a := range attrs {
 		parts = append(parts, fmt.Sprintf("%s=%v", a.Key, a.Value))

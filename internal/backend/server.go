@@ -13,9 +13,10 @@ import (
 // Server exposes the MTProto backend over local HTTP. It is dialed by both
 // the Telegram bot and the MCP server that OpenCode spawns.
 type Server struct {
-	mgr     *tg.Manager
-	mu      sync.Mutex
-	pending map[int64]*pendingLogin
+	mgr       *tg.Manager
+	mu        sync.Mutex
+	pending   map[int64]*pendingLogin
+	qrPending map[int64]*pendingQR
 }
 
 type pendingLogin struct {
@@ -27,8 +28,18 @@ type pendingLogin struct {
 	cancel  context.CancelFunc
 }
 
+type pendingQR struct {
+	urlCh  chan string
+	done   chan error
+	cancel context.CancelFunc
+}
+
 func NewServer(mgr *tg.Manager) *Server {
-	return &Server{mgr: mgr, pending: map[int64]*pendingLogin{}}
+	return &Server{
+		mgr:       mgr,
+		pending:   map[int64]*pendingLogin{},
+		qrPending: map[int64]*pendingQR{},
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -38,6 +49,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/login/code", s.handleLoginCode)
 	mux.HandleFunc("/login/password", s.handleLoginPassword)
 	mux.HandleFunc("/import", s.handleImport)
+	mux.HandleFunc("/qrlogin/start", s.handleQRStart)
+	mux.HandleFunc("/qrlogin/poll", s.handleQRPoll)
 	mux.HandleFunc("/search", s.handleSearch)
 	return mux
 }
@@ -171,6 +184,98 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleQRStart(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID int64 `json:"user_id"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+
+	s.mu.Lock()
+	if _, ok := s.qrPending[req.UserID]; ok {
+		s.mu.Unlock()
+		writeError(w, http.StatusConflict, "qr login already in progress")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	pa := &pendingQR{
+		urlCh:  make(chan string, 1),
+		done:   make(chan error, 1),
+		cancel: cancel,
+	}
+	s.qrPending[req.UserID] = pa
+	s.mu.Unlock()
+
+	go func() {
+		pa.done <- s.mgr.QRLogin(ctx, req.UserID, func(url string) {
+			select {
+			case pa.urlCh <- url:
+			default:
+			}
+		})
+	}()
+
+	select {
+	case url := <-pa.urlCh:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "qr", "url": url})
+	case err := <-pa.done:
+		s.cleanupQR(req.UserID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+		} else {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "done"})
+		}
+	case <-ctx.Done():
+		s.cleanupQR(req.UserID)
+		writeError(w, http.StatusRequestTimeout, "qr login timed out")
+	}
+}
+
+func (s *Server) handleQRPoll(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID int64 `json:"user_id"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+
+	pa := s.getQR(req.UserID)
+	if pa == nil {
+		writeError(w, http.StatusNotFound, "no qr login in progress")
+		return
+	}
+
+	select {
+	case err := <-pa.done:
+		s.cleanupQR(req.UserID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+		} else {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "done"})
+		}
+	case url := <-pa.urlCh:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "refresh", "url": url})
+	case <-time.After(60 * time.Second):
+		writeJSON(w, http.StatusOK, map[string]string{"status": "timeout"})
+	}
+}
+
+func (s *Server) getQR(userID int64) *pendingQR {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.qrPending[userID]
+}
+
+func (s *Server) cleanupQR(userID int64) {
+	s.mu.Lock()
+	if pa, ok := s.qrPending[userID]; ok {
+		pa.cancel()
+		delete(s.qrPending, userID)
+	}
+	s.mu.Unlock()
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {

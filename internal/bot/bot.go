@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mymmrac/telego"
 
@@ -110,6 +111,8 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 			return
 		}
 		b.startLogin(ctx, chatID, args[0])
+	case "/qrlogin":
+		b.startQRLogin(ctx, chatID)
 	case "/set_channels":
 		b.setChannels(ctx, chatID, args)
 	case "/add_channel":
@@ -121,6 +124,32 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	default:
 		b.reply(ctx, chatID, "Неизвестная команда. /help — список команд.")
 	}
+}
+
+func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
+	url, err := b.backend.QRLoginStart(ctx, chatID)
+	if err != nil {
+		b.reply(ctx, chatID, "Не удалось начать QR-вход: "+err.Error())
+		return
+	}
+	b.reply(ctx, chatID, "Отсканируйте или откройте ссылку и подтвердите вход в Telegram:\n"+url)
+
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		status, newURL, err := b.backend.QRLoginPoll(ctx, chatID)
+		if err != nil {
+			b.reply(ctx, chatID, "Ошибка входа: "+err.Error())
+			return
+		}
+		switch status {
+		case "done":
+			b.reply(ctx, chatID, "Готово, вход выполнен.")
+			return
+		case "refresh":
+			b.reply(ctx, chatID, "QR истёк, вот новый:\n"+newURL)
+		}
+	}
+	b.reply(ctx, chatID, "Время истекло. Попробуйте /qrlogin ещё раз.")
 }
 
 func (b *Bot) handleImportSession(ctx context.Context, chatID int64, text string) {
@@ -334,6 +363,7 @@ const helpText = `Бот ищет ответы по вашим Telegram-кана
 
 Команды:
 /login <телефон> — вход в ваш аккаунт Telegram (код и 2FA придут отдельными сообщениями).
+/qrlogin — вход через QR-код (сканируете и подтверждаете на телефоне).
 /import_session <json> — импорт сессии, сгенерированной на чистом IP (см. login-gen).
 /set_channels @ch1 @ch2 — задать список каналов.
 /add_channel @ch1 — добавить канал.

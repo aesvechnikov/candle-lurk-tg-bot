@@ -73,6 +73,30 @@ func (c *Client) ImportSession(ctx context.Context, userID int64, session string
 	return c.post(ctx, "/import", map[string]any{"user_id": userID, "session": session}, nil)
 }
 
+// QRLoginStart starts a QR login and returns the login URL to show the user.
+func (c *Client) QRLoginStart(ctx context.Context, userID int64) (string, error) {
+	var resp struct {
+		URL string `json:"url"`
+	}
+	if err := c.post(ctx, "/qrlogin/start", map[string]any{"user_id": userID}, &resp); err != nil {
+		return "", err
+	}
+	return resp.URL, nil
+}
+
+// QRLoginPoll waits for the QR login to progress. It returns the status
+// ("done", "refresh" or "timeout") and, for "refresh", a new URL.
+func (c *Client) QRLoginPoll(ctx context.Context, userID int64) (status, url string, err error) {
+	var resp struct {
+		Status string `json:"status"`
+		URL    string `json:"url"`
+	}
+	if err := c.post(ctx, "/qrlogin/poll", map[string]any{"user_id": userID}, &resp); err != nil {
+		return "", "", err
+	}
+	return resp.Status, resp.URL, nil
+}
+
 // Search queries the backend for messages matching query in channels.
 func (c *Client) Search(ctx context.Context, userID int64, channels []string, query string, limit int) ([]tg.Result, error) {
 	var results []tg.Result

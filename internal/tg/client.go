@@ -10,6 +10,7 @@ import (
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/tg"
 )
 
@@ -50,6 +51,41 @@ func (m *Manager) ImportSession(userID int64, sessionData []byte) error {
 	return st.StoreSession(context.Background(), sessionData)
 }
 
+// QRLogin runs the Telegram QR-code login flow. onURL is called each time a
+// login token is (re)generated, so the caller can show the link/QR to the
+// user. It blocks until the user approves the login on their phone or ctx is
+// cancelled.
+func (m *Manager) QRLogin(ctx context.Context, userID int64, onURL func(string)) error {
+	_ = os.Remove(m.sessionPath(userID))
+
+	st, err := NewEncryptedStorage(m.sessionPath(userID), m.sessKey)
+	if err != nil {
+		return err
+	}
+
+	dispatcher := tg.NewUpdateDispatcher()
+	loggedIn := qrlogin.OnLoginToken(dispatcher)
+
+	client := telegram.NewClient(m.apiID, m.apiHash, telegram.Options{
+		SessionStorage: st,
+		UpdateHandler:  dispatcher,
+		Logger:         gotdLogger{},
+	})
+
+	qr := qrlogin.NewQR(client.API(), m.apiID, m.apiHash, qrlogin.Options{})
+
+	log.Printf("qrlogin: start user=%d", userID)
+	err = client.Run(ctx, func(ctx context.Context) error {
+		_, err := qr.Auth(ctx, loggedIn, func(ctx context.Context, token qrlogin.Token) error {
+			onURL(token.URL())
+			return nil
+		})
+		return err
+	})
+	log.Printf("qrlogin: result user=%d err=%v", userID, err)
+	return err
+}
+
 func (m *Manager) newClient(userID int64) (*telegram.Client, error) {
 	st, err := NewEncryptedStorage(m.sessionPath(userID), m.sessKey)
 	if err != nil {
@@ -81,7 +117,7 @@ func (a *interactiveUserAuth) Code(ctx context.Context, sentCode *tg.AuthSentCod
 	if sentCode.Type != nil {
 		codeType = sentCode.Type.TypeName()
 	}
-	log.Printf("login: code requested, sent_code_type=%s phone_code_hash=%s", codeType, sentCode.PhoneCodeHash)
+	log.Printf("login: code requested type=%s", codeType)
 	select {
 	case code := <-a.codeCh:
 		return code, nil
