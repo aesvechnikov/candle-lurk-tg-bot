@@ -45,6 +45,7 @@ func (m *Manager) newClient(userID int64) (*telegram.Client, error) {
 	}
 	return telegram.NewClient(m.apiID, m.apiHash, telegram.Options{
 		SessionStorage: st,
+		Logger:         gotdLogger{},
 	}), nil
 }
 
