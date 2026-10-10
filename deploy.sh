@@ -90,6 +90,9 @@ mkdir -p "$INSTALL_DIR/bin"
   cd "$INSTALL_DIR"
   export PATH="/usr/local/go/bin:$PATH"
   export GOTOOLCHAIN=auto
+  # Skip VCS stamping: it shells out to `git status`, which trips over the
+  # repo ownership mismatch the same way `git pull` did.
+  export GOFLAGS="-buildvcs=false"
   go build -o bin/bot     ./cmd/bot
   go build -o bin/backend ./cmd/backend
   go build -o bin/mcp     ./cmd/mcp
