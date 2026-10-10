@@ -1,0 +1,15 @@
+[Unit]
+Description=candle-lurk-tg-bot backend (MTProto search)
+After=network.target
+
+[Service]
+User=candle
+Group=candle
+EnvironmentFile=/etc/candle-lurk-tg-bot/env
+WorkingDirectory=/opt/candle-lurk-tg-bot
+ExecStart=/opt/candle-lurk-tg-bot/bin/backend
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "deepseek/deepseek-chat",
+  "permission": {
+    "skill": { "*": "allow" }
+  },
+  "mcp": {
+    "tg-search": {
+      "type": "local",
+      "command": ["/opt/candle-lurk-tg-bot/bin/mcp"],
+      "environment": {
+        "BACKEND_ADDR": "127.0.0.1:9090"
+      },
+      "enabled": true
+    }
+  }
+}

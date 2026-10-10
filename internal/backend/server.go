@@ -1,0 +1,223 @@
+package backend
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/tg"
+)
+
+// Server exposes the MTProto backend over local HTTP. It is dialed by both
+// the Telegram bot and the MCP server that OpenCode spawns.
+type Server struct {
+	mgr     *tg.Manager
+	mu      sync.Mutex
+	pending map[int64]*pendingLogin
+}
+
+type pendingLogin struct {
+	codeCh  chan string
+	passCh  chan string
+	codeReq chan struct{}
+	passReq chan struct{}
+	done    chan error
+	cancel  context.CancelFunc
+}
+
+func NewServer(mgr *tg.Manager) *Server {
+	return &Server{mgr: mgr, pending: map[int64]*pendingLogin{}}
+}
+
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/login/start", s.handleLoginStart)
+	mux.HandleFunc("/login/code", s.handleLoginCode)
+	mux.HandleFunc("/login/password", s.handleLoginPassword)
+	mux.HandleFunc("/search", s.handleSearch)
+	return mux
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID int64  `json:"user_id"`
+		Phone  string `json:"phone"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Phone == "" {
+		writeError(w, http.StatusBadRequest, "phone is required")
+		return
+	}
+
+	s.mu.Lock()
+	if _, ok := s.pending[req.UserID]; ok {
+		s.mu.Unlock()
+		writeError(w, http.StatusConflict, "login already in progress")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	pa := &pendingLogin{
+		codeCh:  make(chan string, 1),
+		passCh:  make(chan string, 1),
+		codeReq: make(chan struct{}),
+		passReq: make(chan struct{}),
+		done:    make(chan error, 1),
+		cancel:  cancel,
+	}
+	s.pending[req.UserID] = pa
+	s.mu.Unlock()
+
+	go func() {
+		pa.done <- s.mgr.Login(ctx, req.UserID, req.Phone, pa.codeCh, pa.passCh,
+			func() { close(pa.codeReq) }, func() { close(pa.passReq) })
+	}()
+
+	select {
+	case <-pa.codeReq:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "code"})
+	case err := <-pa.done:
+		s.cleanup(req.UserID)
+		writeLoginResult(w, err)
+	case <-ctx.Done():
+		s.cleanup(req.UserID)
+		writeError(w, http.StatusRequestTimeout, "login timed out")
+	}
+}
+
+func (s *Server) handleLoginCode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID int64  `json:"user_id"`
+		Code   string `json:"code"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+
+	pa := s.get(req.UserID)
+	if pa == nil {
+		writeError(w, http.StatusNotFound, "no login in progress")
+		return
+	}
+
+	select {
+	case pa.codeCh <- req.Code:
+	default:
+	}
+
+	select {
+	case <-pa.passReq:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "password"})
+	case err := <-pa.done:
+		s.cleanup(req.UserID)
+		writeLoginResult(w, err)
+	case <-time.After(90 * time.Second):
+		writeError(w, http.StatusRequestTimeout, "login step timed out")
+	}
+}
+
+func (s *Server) handleLoginPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID   int64  `json:"user_id"`
+		Password string `json:"password"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+
+	pa := s.get(req.UserID)
+	if pa == nil {
+		writeError(w, http.StatusNotFound, "no login in progress")
+		return
+	}
+
+	select {
+	case pa.passCh <- req.Password:
+	default:
+	}
+
+	select {
+	case err := <-pa.done:
+		s.cleanup(req.UserID)
+		writeLoginResult(w, err)
+	case <-time.After(90 * time.Second):
+		writeError(w, http.StatusRequestTimeout, "login step timed out")
+	}
+}
+
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID   int64    `json:"user_id"`
+		Channels []string `json:"channels"`
+		Query    string   `json:"query"`
+		Limit    int      `json:"limit"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Query == "" {
+		writeError(w, http.StatusBadRequest, "query is required")
+		return
+	}
+	if len(req.Channels) == 0 {
+		writeJSON(w, http.StatusOK, []tg.Result{})
+		return
+	}
+
+	results, err := s.mgr.Search(r.Context(), req.UserID, req.Channels, req.Query, req.Limit)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, results)
+}
+
+func (s *Server) get(userID int64) *pendingLogin {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pending[userID]
+}
+
+func (s *Server) cleanup(userID int64) {
+	s.mu.Lock()
+	if pa, ok := s.pending[userID]; ok {
+		pa.cancel()
+		delete(s.pending, userID)
+	}
+	s.mu.Unlock()
+}
+
+func writeLoginResult(w http.ResponseWriter, err error) {
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "done"})
+}
+
+func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
+	defer r.Body.Close()
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return false
+	}
+	return true
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
