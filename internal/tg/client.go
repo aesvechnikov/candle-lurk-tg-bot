@@ -113,6 +113,7 @@ func (m *Manager) Login(
 	if err != nil {
 		return err
 	}
+	phone = normalizePhone(phone)
 	log.Printf("login: start user=%d phone=%q", userID, phone)
 
 	// Always start from a clean slate: a previously failed attempt may have
@@ -194,6 +195,19 @@ func (m *Manager) Search(
 
 func cleanUsername(raw string) string {
 	return strings.TrimPrefix(strings.TrimSpace(raw), "@")
+}
+
+// normalizePhone keeps only digits, so "+79991234567" becomes "79991234567".
+// Telegram expects the phone without the "+" in auth.signIn; sending it with
+// the "+" can surface as PHONE_CODE_EXPIRED.
+func normalizePhone(phone string) string {
+	var b strings.Builder
+	for _, r := range phone {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // resolveChannel resolves a username to an InputPeerChannel and returns the
