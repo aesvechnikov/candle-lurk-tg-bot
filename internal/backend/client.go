@@ -68,6 +68,11 @@ func (c *Client) LoginPassword(ctx context.Context, userID int64, password strin
 	return resp.Status, nil
 }
 
+// ImportSession stores a pre-generated session JSON for the user.
+func (c *Client) ImportSession(ctx context.Context, userID int64, session string) error {
+	return c.post(ctx, "/import", map[string]any{"user_id": userID, "session": session}, nil)
+}
+
 // Search queries the backend for messages matching query in channels.
 func (c *Client) Search(ctx context.Context, userID int64, channels []string, query string, limit int) ([]tg.Result, error) {
 	var results []tg.Result

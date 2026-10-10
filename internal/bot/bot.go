@@ -78,6 +78,11 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 		return
 	}
 
+	if strings.HasPrefix(strings.ToLower(text), "/import_session") {
+		b.handleImportSession(ctx, chatID, text)
+		return
+	}
+
 	if strings.HasPrefix(text, "/") {
 		b.handleCommand(ctx, chatID, text)
 		return
@@ -116,6 +121,19 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	default:
 		b.reply(ctx, chatID, "Неизвестная команда. /help — список команд.")
 	}
+}
+
+func (b *Bot) handleImportSession(ctx context.Context, chatID int64, text string) {
+	sessionData := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(text), "/import_session"))
+	if sessionData == "" {
+		b.reply(ctx, chatID, "Укажите сессию: /import_session <содержимое session.json>")
+		return
+	}
+	if err := b.backend.ImportSession(ctx, chatID, sessionData); err != nil {
+		b.reply(ctx, chatID, "Ошибка импорта сессии: "+err.Error())
+		return
+	}
+	b.reply(ctx, chatID, "Сессия импортирована. Теперь можно задавать вопросы.")
 }
 
 func (b *Bot) startLogin(ctx context.Context, chatID int64, phone string) {
@@ -316,6 +334,7 @@ const helpText = `Бот ищет ответы по вашим Telegram-кана
 
 Команды:
 /login <телефон> — вход в ваш аккаунт Telegram (код и 2FA придут отдельными сообщениями).
+/import_session <json> — импорт сессии, сгенерированной на чистом IP (см. login-gen).
 /set_channels @ch1 @ch2 — задать список каналов.
 /add_channel @ch1 — добавить канал.
 /remove_channel @ch1 — убрать канал.

@@ -37,6 +37,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/login/start", s.handleLoginStart)
 	mux.HandleFunc("/login/code", s.handleLoginCode)
 	mux.HandleFunc("/login/password", s.handleLoginPassword)
+	mux.HandleFunc("/import", s.handleImport)
 	mux.HandleFunc("/search", s.handleSearch)
 	return mux
 }
@@ -151,6 +152,25 @@ func (s *Server) handleLoginPassword(w http.ResponseWriter, r *http.Request) {
 	case <-time.After(90 * time.Second):
 		writeError(w, http.StatusRequestTimeout, "login step timed out")
 	}
+}
+
+func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID  int64  `json:"user_id"`
+		Session string `json:"session"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Session == "" {
+		writeError(w, http.StatusBadRequest, "session is required")
+		return
+	}
+	if err := s.mgr.ImportSession(req.UserID, []byte(req.Session)); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {

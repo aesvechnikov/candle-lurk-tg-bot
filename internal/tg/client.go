@@ -39,6 +39,17 @@ func (m *Manager) sessionPath(userID int64) string {
 	return filepath.Join(m.dataDir, "sessions", fmt.Sprintf("%d.session", userID))
 }
 
+// ImportSession stores a pre-generated session (e.g. produced by login-gen on
+// a trusted IP) into the user's encrypted session slot. The data must be the
+// raw session bytes as produced by gotd's session storage.
+func (m *Manager) ImportSession(userID int64, sessionData []byte) error {
+	st, err := NewEncryptedStorage(m.sessionPath(userID), m.sessKey)
+	if err != nil {
+		return err
+	}
+	return st.StoreSession(context.Background(), sessionData)
+}
+
 func (m *Manager) newClient(userID int64) (*telegram.Client, error) {
 	st, err := NewEncryptedStorage(m.sessionPath(userID), m.sessKey)
 	if err != nil {
