@@ -68,6 +68,11 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Clone and build
 # ---------------------------------------------------------------------------
+# The source tree stays owned by the user running this script (root); the
+# service user only needs read access. Pre-empt git's "dubious ownership"
+# guard in case an earlier deploy chowned the tree to the service user.
+git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "updating repository"
   git -C "$INSTALL_DIR" pull --ff-only
@@ -75,7 +80,7 @@ else
   log "cloning repository"
   git clone "$REPO_URL" "$INSTALL_DIR"
 fi
-chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
+chmod -R a+rX "$INSTALL_DIR"
 
 log "building binaries"
 mkdir -p "$INSTALL_DIR/bin"
@@ -88,7 +93,9 @@ mkdir -p "$INSTALL_DIR/bin"
   go build -o bin/mcp     ./cmd/mcp
 )
 mkdir -p "$INSTALL_DIR/data"
-chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR/bin" "$INSTALL_DIR/data"
+# data/ holds the SQLite DB and encrypted sessions — the only thing the
+# service user must be able to write.
+chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR/data"
 
 # ---------------------------------------------------------------------------
 # 5. OpenCode
