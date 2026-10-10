@@ -57,6 +57,23 @@ go build -o bin/backend ./cmd/backend
 go build -o bin/mcp ./cmd/mcp
 ```
 
+### Низкая память на VDS (2 ГБ)
+
+Компиляция `github.com/gotd/td/tg` требует больше 2 ГБ RAM. На VDS с 2 ГБ
+собирайте бинарники на другой машине и заливайте готовыми, а деплой запускайте
+с `SKIP_BUILD=1`:
+
+```bash
+# на машине с достаточной памятью (например, Mac):
+GOOS=linux GOARCH=amd64 go build -o bin/linux/bot     ./cmd/bot
+GOOS=linux GOARCH=amd64 go build -o bin/linux/backend ./cmd/backend
+GOOS=linux GOARCH=amd64 go build -o bin/linux/mcp     ./cmd/mcp
+# затем скопировать в /opt/candle-lurk-tg-bot/bin/ и:
+sudo SKIP_BUILD=1 bash deploy.sh
+```
+
+Либо добавьте swap на VDS и собирайте на месте.
+
 ## Настройка
 
 Скопируйте `.env.example` в env-файл (см. `deploy/*.service`, по умолчанию

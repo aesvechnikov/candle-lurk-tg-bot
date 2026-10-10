@@ -84,19 +84,25 @@ else
 fi
 chmod -R a+rX "$INSTALL_DIR"
 
-log "building binaries"
-mkdir -p "$INSTALL_DIR/bin"
-(
-  cd "$INSTALL_DIR"
-  export PATH="/usr/local/go/bin:$PATH"
-  export GOTOOLCHAIN=auto
-  # Skip VCS stamping: it shells out to `git status`, which trips over the
-  # repo ownership mismatch the same way `git pull` did.
-  export GOFLAGS="-buildvcs=false"
-  go build -o bin/bot     ./cmd/bot
-  go build -o bin/backend ./cmd/backend
-  go build -o bin/mcp     ./cmd/mcp
-)
+if [ "${SKIP_BUILD:-0}" = "1" ]; then
+  log "skipping build (SKIP_BUILD=1): using pre-built binaries in ${INSTALL_DIR}/bin"
+else
+  log "building binaries"
+  mkdir -p "$INSTALL_DIR/bin"
+  (
+    cd "$INSTALL_DIR"
+    export PATH="/usr/local/go/bin:$PATH"
+    export GOTOOLCHAIN=auto
+    # -buildvcs=false: don't shell out to git status (ownership mismatch).
+    # -p=1: serialize package builds to lower peak memory. Note that compiling
+    # github.com/gotd/td/tg still needs >1.5GB — on a 2GB VDS prefer SKIP_BUILD
+    # with binaries cross-compiled elsewhere, or add swap.
+    export GOFLAGS="-buildvcs=false -p=1"
+    go build -o bin/bot     ./cmd/bot
+    go build -o bin/backend ./cmd/backend
+    go build -o bin/mcp     ./cmd/mcp
+  )
+fi
 mkdir -p "$INSTALL_DIR/data"
 # data/ holds the SQLite DB and encrypted sessions — the only thing the
 # service user must be able to write.
