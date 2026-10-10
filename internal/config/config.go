@@ -44,7 +44,10 @@ func Load() (Config, error) {
 		APIHash:          os.Getenv("TG_API_HASH"),
 		OpenCodeURL:      getenv("OPENCODE_URL", "http://127.0.0.1:4096"),
 		OpenCodeUsername: getenv("OPENCODE_USERNAME", "opencode"),
-		OpenCodePassword: os.Getenv("OPENCODE_PASSWORD"),
+		// The bot authenticates to `opencode serve`; accept the shared
+		// OPENCODE_SERVER_PASSWORD as a fallback so a single variable works
+		// for both the bot and the server.
+		OpenCodePassword: getenv("OPENCODE_PASSWORD", os.Getenv("OPENCODE_SERVER_PASSWORD")),
 		OpenCodeModel:    getenv("OPENCODE_MODEL", "deepseek/deepseek-chat"),
 		DataDir:          getenv("DATA_DIR", "./data"),
 		BackendAddr:      getenv("BACKEND_ADDR", "127.0.0.1:9090"),
