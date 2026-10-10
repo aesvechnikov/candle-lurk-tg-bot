@@ -150,16 +150,18 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
 	url, png, err := b.backend.QRLoginStart(ctx, chatID)
 	if err != nil {
-		b.reply(ctx, chatID, "Не удалось начать QR-вход: "+err.Error())
+		b.reply(ctx, chatID, "Не удалось начать QR-вход: "+friendlyLoginError(err))
 		return
 	}
 	b.sendQR(ctx, chatID, png, url)
 
+	const maxRefreshes = 3
+	refreshes := 0
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
 		status, newURL, newPNG, err := b.backend.QRLoginPoll(ctx, chatID)
 		if err != nil {
-			b.reply(ctx, chatID, "Ошибка входа: "+err.Error())
+			b.reply(ctx, chatID, friendlyLoginError(err))
 			return
 		}
 		switch status {
@@ -167,10 +169,24 @@ func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
 			b.reply(ctx, chatID, "Готово, вход выполнен.")
 			return
 		case "refresh":
+			refreshes++
+			if refreshes > maxRefreshes {
+				b.reply(ctx, chatID, "QR-код истекает слишком часто. Попробуйте /qrlogin ещё раз или используйте /import_session.")
+				return
+			}
 			b.sendQR(ctx, chatID, newPNG, newURL)
 		}
 	}
-	b.reply(ctx, chatID, "Время истекло. Попробуйте /qrlogin ещё раз.")
+	b.reply(ctx, chatID, "Время входа истекло. Попробуйте /qrlogin ещё раз.")
+}
+
+// friendlyLoginError converts gotd's raw timeout errors into a readable message.
+func friendlyLoginError(err error) string {
+	msg := err.Error()
+	if strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "timed out") {
+		return "Время входа истекло. Попробуйте ещё раз."
+	}
+	return "Ошибка входа: " + msg
 }
 
 // sendQR sends the login QR code as a photo, with the tappable URL as caption.
@@ -234,7 +250,7 @@ func (b *Bot) handleLoginInput(ctx context.Context, chatID int64, text string) {
 		status, err := b.backend.LoginCode(ctx, chatID, text)
 		if err != nil {
 			b.clearLogin(chatID)
-			b.reply(ctx, chatID, "Ошибка входа: "+err.Error())
+			b.reply(ctx, chatID, friendlyLoginError(err))
 			return
 		}
 		switch status {
@@ -250,7 +266,7 @@ func (b *Bot) handleLoginInput(ctx context.Context, chatID int64, text string) {
 		status, err := b.backend.LoginPassword(ctx, chatID, text)
 		if err != nil {
 			b.clearLogin(chatID)
-			b.reply(ctx, chatID, "Ошибка входа: "+err.Error())
+			b.reply(ctx, chatID, friendlyLoginError(err))
 			return
 		}
 		if status == "done" {
