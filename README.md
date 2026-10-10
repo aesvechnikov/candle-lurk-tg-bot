@@ -59,20 +59,28 @@ go build -o bin/mcp ./cmd/mcp
 
 ### Низкая память на VDS (2 ГБ)
 
-Компиляция `github.com/gotd/td/tg` требует больше 2 ГБ RAM. На VDS с 2 ГБ
-собирайте бинарники на другой машине и заливайте готовыми, а деплой запускайте
-с `SKIP_BUILD=1`:
+Компиляция `github.com/gotd/td/tg` требует больше 2 ГБ RAM, поэтому на VDS с 2 ГБ
+собирайте бинарники на другой машине и заливайте готовыми.
+
+На своей машине (Mac/Linux с достаточной памятью):
 
 ```bash
-# на машине с достаточной памятью (например, Mac):
-GOOS=linux GOARCH=amd64 go build -o bin/linux/bot     ./cmd/bot
-GOOS=linux GOARCH=amd64 go build -o bin/linux/backend ./cmd/backend
-GOOS=linux GOARCH=amd64 go build -o bin/linux/mcp     ./cmd/mcp
-# затем скопировать в /opt/candle-lurk-tg-bot/bin/ и:
+./cross-compile.sh          # кладёт bot/backend/mcp в dist/ (linux/amd64)
+```
+
+На сервер нужно заливать **только эти три бинарника**. Весь остальной код —
+`.opencode/`, `opencode.json`, `deploy/*.service`, `.env.example` — `deploy.sh`
+сам подтянет через `git clone`:
+
+```bash
+scp dist/bot dist/backend dist/mcp user@IP:/tmp/
+ssh user@IP
+sudo mkdir -p /opt/candle-lurk-tg-bot/bin
+sudo cp /tmp/bot /tmp/backend /tmp/mcp /opt/candle-lurk-tg-bot/bin/
 sudo SKIP_BUILD=1 bash deploy.sh
 ```
 
-Либо добавьте swap на VDS и собирайте на месте.
+Либо добавьте swap на VDS и собирайте на месте обычным `sudo bash deploy.sh`.
 
 ## Настройка
 
