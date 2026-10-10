@@ -100,6 +100,25 @@ OpenCode должен видеть `opencode.json` и `.opencode/` из рабо
 
 ## Деплой (systemd)
 
+Проще всего — через `deploy.sh`: он ставит Git/Go/OpenCode, клонирует репозиторий,
+собирает бинарники, создаёт env-файл и поднимает все три сервиса.
+
+```bash
+sudo bash deploy.sh
+```
+
+Первый запуск останавливается после создания env-файла — заполните его
+(`/etc/candle-lurk-tg-bot/env`) и запустите скрипт ещё раз.
+
+Переменные `deploy.sh`:
+
+- `SKIP_BUILD=1` — не собирать бинарники, использовать уже лежащие в
+  `/opt/candle-lurk-tg-bot/bin/`. Нужен на VDS с 2 ГБ, где сборка gotd падает по
+  памяти (см. «Низкая память»).
+- `GO_VERSION=1.26.2` — версия Go для установки.
+
+`deploy.sh` по итогу делает то же, что вручную:
+
 ```bash
 sudo cp deploy/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
