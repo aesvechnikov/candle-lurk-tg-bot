@@ -58,6 +58,9 @@ func New(
 }
 
 func (b *Bot) Run(ctx context.Context) error {
+	if err := b.registerCommands(ctx); err != nil {
+		return err
+	}
 	updates, err := b.tele.UpdatesViaLongPolling(ctx, nil)
 	if err != nil {
 		return err
@@ -66,6 +69,22 @@ func (b *Bot) Run(ctx context.Context) error {
 		b.handleUpdate(ctx, upd)
 	}
 	return nil
+}
+
+// registerCommands publishes the command list so Telegram shows suggestions
+// when the user types "/".
+func (b *Bot) registerCommands(ctx context.Context) error {
+	commands := []telego.BotCommand{
+		{Command: "login", Description: "вход по номеру телефона"},
+		{Command: "qrlogin", Description: "вход через QR-код"},
+		{Command: "import_session", Description: "импорт готовой сессии"},
+		{Command: "set_channels", Description: "задать каналы для поиска"},
+		{Command: "add_channel", Description: "добавить канал"},
+		{Command: "remove_channel", Description: "убрать канал"},
+		{Command: "list_channels", Description: "показать каналы"},
+		{Command: "help", Description: "справка"},
+	}
+	return b.tele.SetMyCommands(ctx, &telego.SetMyCommandsParams{Commands: commands})
 }
 
 func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
