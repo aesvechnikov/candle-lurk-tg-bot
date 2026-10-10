@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"sync"
@@ -28,8 +29,13 @@ type pendingLogin struct {
 	cancel  context.CancelFunc
 }
 
+type qrData struct {
+	url string
+	png []byte
+}
+
 type pendingQR struct {
-	urlCh  chan string
+	ch     chan qrData
 	done   chan error
 	cancel context.CancelFunc
 }
@@ -202,7 +208,7 @@ func (s *Server) handleQRStart(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	pa := &pendingQR{
-		urlCh:  make(chan string, 1),
+		ch:     make(chan qrData, 1),
 		done:   make(chan error, 1),
 		cancel: cancel,
 	}
@@ -210,17 +216,17 @@ func (s *Server) handleQRStart(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	go func() {
-		pa.done <- s.mgr.QRLogin(ctx, req.UserID, func(url string) {
+		pa.done <- s.mgr.QRLogin(ctx, req.UserID, func(url string, png []byte) {
 			select {
-			case pa.urlCh <- url:
+			case pa.ch <- qrData{url: url, png: png}:
 			default:
 			}
 		})
 	}()
 
 	select {
-	case url := <-pa.urlCh:
-		writeJSON(w, http.StatusOK, map[string]string{"status": "qr", "url": url})
+	case d := <-pa.ch:
+		writeQR(w, http.StatusOK, "qr", d)
 	case err := <-pa.done:
 		s.cleanupQR(req.UserID)
 		if err != nil {
@@ -256,11 +262,20 @@ func (s *Server) handleQRPoll(w http.ResponseWriter, r *http.Request) {
 		} else {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "done"})
 		}
-	case url := <-pa.urlCh:
-		writeJSON(w, http.StatusOK, map[string]string{"status": "refresh", "url": url})
+	case d := <-pa.ch:
+		writeQR(w, http.StatusOK, "refresh", d)
 	case <-time.After(60 * time.Second):
 		writeJSON(w, http.StatusOK, map[string]string{"status": "timeout"})
 	}
+}
+
+// writeQR writes a QR login response with the token URL and a base64 PNG.
+func writeQR(w http.ResponseWriter, code int, status string, d qrData) {
+	png := ""
+	if len(d.png) > 0 {
+		png = base64.StdEncoding.EncodeToString(d.png)
+	}
+	writeJSON(w, code, map[string]string{"status": status, "url": d.url, "png": png})
 }
 
 func (s *Server) getQR(userID int64) *pendingQR {

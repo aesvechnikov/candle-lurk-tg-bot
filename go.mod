@@ -3,10 +3,12 @@ module github.com/aesvechnikov/candle-lurk-tg-bot
 go 1.26.2
 
 require (
+	github.com/gotd/log v0.1.0
 	github.com/gotd/td v0.161.0
 	github.com/mark3labs/mcp-go v1.0.0
 	github.com/mymmrac/telego v1.11.2
 	modernc.org/sqlite v1.58.0
+	rsc.io/qr v0.2.0
 )
 
 require (
@@ -29,7 +31,6 @@ require (
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gotd/ige v0.3.0 // indirect
-	github.com/gotd/log v0.1.0 // indirect
 	github.com/gotd/neo v0.1.5 // indirect
 	github.com/grbit/go-json v0.11.0 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
@@ -69,5 +70,4 @@ require (
 	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	rsc.io/qr v0.2.0 // indirect
 )

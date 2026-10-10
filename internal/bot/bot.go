@@ -1,7 +1,9 @@
 package bot
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"sync"
@@ -146,16 +148,16 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 }
 
 func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
-	url, err := b.backend.QRLoginStart(ctx, chatID)
+	url, png, err := b.backend.QRLoginStart(ctx, chatID)
 	if err != nil {
 		b.reply(ctx, chatID, "Не удалось начать QR-вход: "+err.Error())
 		return
 	}
-	b.reply(ctx, chatID, "Отсканируйте или откройте ссылку и подтвердите вход в Telegram:\n"+url)
+	b.sendQR(ctx, chatID, png, url)
 
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
-		status, newURL, err := b.backend.QRLoginPoll(ctx, chatID)
+		status, newURL, newPNG, err := b.backend.QRLoginPoll(ctx, chatID)
 		if err != nil {
 			b.reply(ctx, chatID, "Ошибка входа: "+err.Error())
 			return
@@ -165,11 +167,36 @@ func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
 			b.reply(ctx, chatID, "Готово, вход выполнен.")
 			return
 		case "refresh":
-			b.reply(ctx, chatID, "QR истёк, вот новый:\n"+newURL)
+			b.sendQR(ctx, chatID, newPNG, newURL)
 		}
 	}
 	b.reply(ctx, chatID, "Время истекло. Попробуйте /qrlogin ещё раз.")
 }
+
+// sendQR sends the login QR code as a photo, with the tappable URL as caption.
+func (b *Bot) sendQR(ctx context.Context, chatID int64, pngBase64, url string) {
+	caption := "Отсканируйте QR-код приложением Telegram или откройте ссылку и подтвердите вход:\n" + url
+
+	png, err := base64.StdEncoding.DecodeString(pngBase64)
+	if err != nil || len(png) == 0 {
+		b.reply(ctx, chatID, caption)
+		return
+	}
+
+	_, _ = b.tele.SendPhoto(ctx, &telego.SendPhotoParams{
+		ChatID:  telego.ChatID{ID: chatID},
+		Photo:   telego.InputFile{File: namedBytes{Reader: bytes.NewReader(png), name: "qr.png"}},
+		Caption: caption,
+	})
+}
+
+// namedBytes adapts an in-memory byte slice to telego's NamedReader for uploads.
+type namedBytes struct {
+	*bytes.Reader
+	name string
+}
+
+func (n namedBytes) Name() string { return n.name }
 
 func (b *Bot) handleImportSession(ctx context.Context, chatID int64, text string) {
 	sessionData := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(text), "/import_session"))

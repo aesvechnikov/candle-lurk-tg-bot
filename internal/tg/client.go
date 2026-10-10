@@ -1,8 +1,10 @@
 package tg
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image/png"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/tg"
+	"rsc.io/qr"
 )
 
 // Result is a single search hit returned to the caller.
@@ -51,11 +54,11 @@ func (m *Manager) ImportSession(userID int64, sessionData []byte) error {
 	return st.StoreSession(context.Background(), sessionData)
 }
 
-// QRLogin runs the Telegram QR-code login flow. onURL is called each time a
-// login token is (re)generated, so the caller can show the link/QR to the
-// user. It blocks until the user approves the login on their phone or ctx is
-// cancelled.
-func (m *Manager) QRLogin(ctx context.Context, userID int64, onURL func(string)) error {
+// QRLogin runs the Telegram QR-code login flow. onToken is called each time a
+// login token is (re)generated, with the login URL and a PNG-encoded QR image
+// (may be nil if rendering failed). It blocks until the user approves the
+// login on their phone or ctx is cancelled.
+func (m *Manager) QRLogin(ctx context.Context, userID int64, onToken func(url string, png []byte)) error {
 	_ = os.Remove(m.sessionPath(userID))
 
 	st, err := NewEncryptedStorage(m.sessionPath(userID), m.sessKey)
@@ -72,18 +75,31 @@ func (m *Manager) QRLogin(ctx context.Context, userID int64, onURL func(string))
 		Logger:         gotdLogger{},
 	})
 
-	qr := qrlogin.NewQR(client.API(), m.apiID, m.apiHash, qrlogin.Options{})
+	qrFlow := qrlogin.NewQR(client.API(), m.apiID, m.apiHash, qrlogin.Options{})
 
 	log.Printf("qrlogin: start user=%d", userID)
 	err = client.Run(ctx, func(ctx context.Context) error {
-		_, err := qr.Auth(ctx, loggedIn, func(ctx context.Context, token qrlogin.Token) error {
-			onURL(token.URL())
+		_, err := qrFlow.Auth(ctx, loggedIn, func(ctx context.Context, token qrlogin.Token) error {
+			onToken(token.URL(), renderQR(token))
 			return nil
 		})
 		return err
 	})
 	log.Printf("qrlogin: result user=%d err=%v", userID, err)
 	return err
+}
+
+// renderQR renders a login token as a PNG QR image, or nil on failure.
+func renderQR(token qrlogin.Token) []byte {
+	img, err := token.Image(qr.M)
+	if err != nil {
+		return nil
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil
+	}
+	return buf.Bytes()
 }
 
 func (m *Manager) newClient(userID int64) (*telegram.Client, error) {
