@@ -69,13 +69,15 @@ fi
 # 4. Clone and build
 # ---------------------------------------------------------------------------
 # The source tree stays owned by the user running this script (root); the
-# service user only needs read access. Pre-empt git's "dubious ownership"
-# guard in case an earlier deploy chowned the tree to the service user.
-git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-
+# service user only needs read access. `-c safe.directory=...` is passed inline
+# so git trusts the dir regardless of ownership or global config state.
 if [ -d "$INSTALL_DIR/.git" ]; then
   log "updating repository"
-  git -C "$INSTALL_DIR" pull --ff-only
+  if ! git -C "$INSTALL_DIR" -c "safe.directory=$INSTALL_DIR" pull --ff-only; then
+    warn "pull failed; falling back to a fresh clone"
+    rm -rf "$INSTALL_DIR"
+    git clone "$REPO_URL" "$INSTALL_DIR"
+  fi
 else
   log "cloning repository"
   git clone "$REPO_URL" "$INSTALL_DIR"
