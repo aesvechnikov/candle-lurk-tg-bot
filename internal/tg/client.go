@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -65,7 +66,11 @@ func (a *interactiveUserAuth) Code(ctx context.Context, sentCode *tg.AuthSentCod
 	if a.onCode != nil {
 		a.onCode()
 	}
-	log.Printf("login: code requested, sent_code_type=%s phone_code_hash=%s", sentCode.TypeName(), sentCode.PhoneCodeHash)
+	codeType := ""
+	if sentCode.Type != nil {
+		codeType = sentCode.Type.TypeName()
+	}
+	log.Printf("login: code requested, sent_code_type=%s phone_code_hash=%s", codeType, sentCode.PhoneCodeHash)
 	select {
 	case code := <-a.codeCh:
 		return code, nil
@@ -109,6 +114,13 @@ func (m *Manager) Login(
 		return err
 	}
 	log.Printf("login: start user=%d phone=%q", userID, phone)
+
+	// Always start from a clean slate: a previously failed attempt may have
+	// persisted an unregistered temp auth key, which gotd restores and then
+	// has to re-register mid-flow (AUTH_KEY_UNREGISTERED), invalidating the
+	// freshly sent code with PHONE_CODE_EXPIRED.
+	_ = os.Remove(m.sessionPath(userID))
+
 	ua := &interactiveUserAuth{phone: phone, codeCh: codeCh, passCh: passCh, onCode: onCode, onPass: onPass}
 	flow := auth.NewFlow(ua, auth.SendCodeOptions{})
 	err = client.Run(ctx, func(ctx context.Context) error {
