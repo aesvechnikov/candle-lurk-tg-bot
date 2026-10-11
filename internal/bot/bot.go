@@ -208,7 +208,7 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 			return
 		}
 		b.setAwaitingAdd(chatID)
-		b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2\n\nИли перешлите любое сообщение из канала.")
+		b.reply(ctx, chatID, "Отправьте имена каналов (@channel1 @channel2), ссылку t.me/канал или перешлите любое сообщение из канала.")
 	case "/remove_channels":
 		if !b.requireAuth(ctx, chatID) {
 			return
@@ -391,12 +391,20 @@ func (b *Bot) addChannels(ctx context.Context, chatID int64, names []string) {
 	}
 	var channels []store.Channel
 	for _, name := range names {
-		c := store.Channel{Name: name}
-		if title, about, err := b.backend.ChannelInfo(ctx, chatID, name); err == nil {
+		username := channelUsername(name)
+		if username == "" {
+			continue
+		}
+		c := store.Channel{Name: username}
+		if title, about, err := b.backend.ChannelInfo(ctx, chatID, username); err == nil {
 			c.Title = title
 			c.About = about
 		}
 		channels = append(channels, c)
+	}
+	if len(channels) == 0 {
+		b.reply(ctx, chatID, "Не удалось распознать ни один канал.")
+		return
 	}
 	if err := b.store.AddChannels(chatID, channels); err != nil {
 		b.reply(ctx, chatID, "Ошибка: "+err.Error())
@@ -411,9 +419,35 @@ func (b *Bot) removeChannels(ctx context.Context, chatID int64, channels []strin
 		return
 	}
 	for _, c := range channels {
-		_ = b.store.RemoveChannel(chatID, c)
+		if username := channelUsername(c); username != "" {
+			_ = b.store.RemoveChannel(chatID, username)
+		}
 	}
 	b.listChannels(ctx, chatID)
+}
+
+// channelUsername normalizes a channel reference to a bare username:
+// "@name", "name", "https://t.me/name", "t.me/s/name" -> "name".
+// Returns "" for unparsable input (e.g. a private invite link t.me/+hash).
+func channelUsername(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "@")
+	raw = strings.TrimPrefix(raw, "https://")
+	raw = strings.TrimPrefix(raw, "http://")
+	for _, host := range []string{"t.me/s/", "telegram.me/s/", "t.me/", "telegram.me/"} {
+		if strings.HasPrefix(raw, host) {
+			raw = strings.TrimPrefix(raw, host)
+			break
+		}
+	}
+	if i := strings.IndexAny(raw, "/?#"); i >= 0 {
+		raw = raw[:i]
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.HasPrefix(raw, "+") {
+		return ""
+	}
+	return raw
 }
 
 func (b *Bot) listChannels(ctx context.Context, chatID int64) {
