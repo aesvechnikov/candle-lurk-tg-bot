@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -120,7 +121,12 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("opencode returned status %d", resp.StatusCode)
+		b, _ := io.ReadAll(resp.Body)
+		msg := strings.TrimSpace(string(b))
+		if len(msg) > 500 {
+			msg = msg[:500]
+		}
+		return fmt.Errorf("opencode status %d: %s", resp.StatusCode, msg)
 	}
 	if out == nil {
 		return nil
