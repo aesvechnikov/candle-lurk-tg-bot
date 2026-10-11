@@ -390,10 +390,32 @@ func (b *Bot) addChannels(ctx context.Context, chatID int64, names []string) {
 		b.reply(ctx, chatID, "Не получил имена каналов.")
 		return
 	}
+
+	existing, err := b.store.ListChannels(chatID)
+	if err != nil {
+		b.reply(ctx, chatID, "Ошибка: "+err.Error())
+		return
+	}
+	have := make(map[string]bool, len(existing))
+	for _, c := range existing {
+		have[strings.ToLower(channelUsername(c.Name))] = true
+	}
+
 	var channels []store.Channel
+	var already []string
+	seen := make(map[string]bool, len(names))
 	for _, name := range names {
 		username := channelUsername(name)
 		if username == "" {
+			continue
+		}
+		key := strings.ToLower(username)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if have[key] {
+			already = append(already, username)
 			continue
 		}
 		c := store.Channel{Name: username}
@@ -403,15 +425,23 @@ func (b *Bot) addChannels(ctx context.Context, chatID int64, names []string) {
 		}
 		channels = append(channels, c)
 	}
-	if len(channels) == 0 {
+
+	if len(channels) > 0 {
+		if err := b.store.AddChannels(chatID, channels); err != nil {
+			b.reply(ctx, chatID, "Ошибка: "+err.Error())
+			return
+		}
+	}
+
+	if len(channels) == 0 && len(already) == 0 {
 		b.reply(ctx, chatID, "Не удалось распознать ни один канал.")
 		return
 	}
-	if err := b.store.AddChannels(chatID, channels); err != nil {
-		b.reply(ctx, chatID, "Ошибка: "+err.Error())
-		return
-	}
+
 	b.listChannels(ctx, chatID)
+	if len(already) > 0 {
+		b.reply(ctx, chatID, "Уже были добавлены: "+strings.Join(already, ", "))
+	}
 }
 
 func (b *Bot) removeChannels(ctx context.Context, chatID int64, channels []string) {
