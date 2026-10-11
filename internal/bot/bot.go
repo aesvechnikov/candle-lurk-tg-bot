@@ -38,9 +38,10 @@ type Bot struct {
 	stt     *stt.Client
 	sttOn   bool
 
-	mu         sync.Mutex
-	logins     map[int64]bool // chatID -> awaiting the QR 2FA password
-	pendingAdd map[int64]bool // chatID -> awaiting channel names for /add_channels
+	mu            sync.Mutex
+	logins        map[int64]bool // chatID -> awaiting the QR 2FA password
+	pendingAdd    map[int64]bool // chatID -> awaiting channel names for /add_channels
+	pendingRemove map[int64]bool // chatID -> awaiting channel names for /remove_channels
 }
 
 func New(
@@ -62,17 +63,18 @@ func New(
 		allowedMap[strings.ToLower(u)] = true
 	}
 	return &Bot{
-		tele:       tg,
-		token:      token,
-		store:      st,
-		backend:    b,
-		oc:         oc,
-		model:      model,
-		allowed:    allowedMap,
-		stt:        sttClient,
-		sttOn:      sttEnabled,
-		logins:     map[int64]bool{},
-		pendingAdd: map[int64]bool{},
+		tele:          tg,
+		token:         token,
+		store:         st,
+		backend:       b,
+		oc:            oc,
+		model:         model,
+		allowed:       allowedMap,
+		stt:           sttClient,
+		sttOn:         sttEnabled,
+		logins:        map[int64]bool{},
+		pendingAdd:    map[int64]bool{},
+		pendingRemove: map[int64]bool{},
 	}, nil
 }
 
@@ -96,7 +98,7 @@ func (b *Bot) registerCommands(ctx context.Context) error {
 	commands := []telego.BotCommand{
 		{Command: "qrlogin", Description: "вход через QR-код"},
 		{Command: "add_channels", Description: "добавить каналы"},
-		{Command: "remove_channel", Description: "убрать канал"},
+		{Command: "remove_channels", Description: "убрать каналы"},
 		{Command: "list_channels", Description: "показать каналы"},
 		{Command: "cancel", Description: "отменить вход"},
 		{Command: "help", Description: "справка"},
@@ -146,6 +148,10 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 		b.handleAddChannelsInput(ctx, chatID, text)
 		return
 	}
+	if b.awaitingRemove(chatID) {
+		b.handleRemoveChannelsInput(ctx, chatID, text)
+		return
+	}
 	b.handleQuestion(ctx, chatID, text)
 }
 
@@ -170,9 +176,10 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 			return
 		}
 		b.addChannels(ctx, chatID, args)
-	case "/remove_channel":
+	case "/remove_channels":
 		if len(args) == 0 {
-			b.removeChannelMenu(ctx, chatID)
+			b.setAwaitingRemove(chatID)
+			b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
 			return
 		}
 		b.removeChannels(ctx, chatID, args)
@@ -198,11 +205,6 @@ func (b *Bot) handleCallback(ctx context.Context, cq *telego.CallbackQuery) {
 		b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
 	case "help":
 		b.welcome(ctx, chatID)
-	default:
-		if strings.HasPrefix(cq.Data, "rm:") {
-			_ = b.store.RemoveChannel(chatID, strings.TrimPrefix(cq.Data, "rm:"))
-			b.listChannels(ctx, chatID)
-		}
 	}
 }
 
@@ -342,7 +344,7 @@ func (b *Bot) addChannels(ctx context.Context, chatID int64, names []string) {
 
 func (b *Bot) removeChannels(ctx context.Context, chatID int64, channels []string) {
 	if len(channels) == 0 {
-		b.reply(ctx, chatID, "Укажите каналы: /remove_channel @channel1")
+		b.reply(ctx, chatID, "Укажите каналы: /remove_channels @channel1")
 		return
 	}
 	for _, c := range channels {
@@ -571,24 +573,33 @@ func (b *Bot) handleAddChannelsInput(ctx context.Context, chatID int64, text str
 	b.addChannels(ctx, chatID, names)
 }
 
-// removeChannelMenu shows one inline button per saved channel.
-func (b *Bot) removeChannelMenu(ctx context.Context, chatID int64) {
-	channels, err := b.store.ListChannels(chatID)
-	if err != nil || len(channels) == 0 {
-		b.reply(ctx, chatID, "Каналы не заданы.")
+func (b *Bot) setAwaitingRemove(chatID int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.pendingRemove[chatID] = true
+}
+
+func (b *Bot) awaitingRemove(chatID int64) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pendingRemove[chatID]
+}
+
+func (b *Bot) clearAwaitingRemove(chatID int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.pendingRemove, chatID)
+}
+
+// handleRemoveChannelsInput treats the next plain message as channel names to remove.
+func (b *Bot) handleRemoveChannelsInput(ctx context.Context, chatID int64, text string) {
+	b.clearAwaitingRemove(chatID)
+	names := strings.Fields(text)
+	if len(names) == 0 {
+		b.reply(ctx, chatID, "Не получил имена каналов.")
 		return
 	}
-	var rows [][]telego.InlineKeyboardButton
-	for _, c := range channels {
-		rows = append(rows, []telego.InlineKeyboardButton{
-			{Text: c.Name, CallbackData: "rm:" + c.Name},
-		})
-	}
-	_, _ = b.tele.SendMessage(ctx, &telego.SendMessageParams{
-		ChatID:      telego.ChatID{ID: chatID},
-		Text:        "Выберите канал для удаления:",
-		ReplyMarkup: &telego.InlineKeyboardMarkup{InlineKeyboard: rows},
-	})
+	b.removeChannels(ctx, chatID, names)
 }
 
 func buildPrompt(chatID int64, channels []store.Channel, question string) string {
@@ -640,7 +651,7 @@ const helpText = `👋 Привет! Я ищу ответы по вашим Tele
 Команды:
 🔑 /qrlogin — войти через QR-код.
 ➕ /add_channels @ch1 @ch2 — добавить каналы.
-➖ /remove_channel @ch — убрать канал.
+➖ /remove_channels @ch1 @ch2 — убрать каналы.
 📋 /list_channels — мои каналы.
 ❌ /cancel — отменить вход.
 
