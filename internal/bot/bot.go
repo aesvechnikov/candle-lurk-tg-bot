@@ -179,7 +179,7 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	case "/remove_channels":
 		if len(args) == 0 {
 			b.setAwaitingRemove(chatID)
-			b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
+			b.reply(ctx, chatID, b.removePrompt(chatID))
 			return
 		}
 		b.removeChannels(ctx, chatID, args)
@@ -600,6 +600,28 @@ func (b *Bot) handleRemoveChannelsInput(ctx context.Context, chatID int64, text 
 		return
 	}
 	b.removeChannels(ctx, chatID, names)
+}
+
+// removePrompt lists the current channels so the user knows what they can remove.
+func (b *Bot) removePrompt(chatID int64) string {
+	channels, err := b.store.ListChannels(chatID)
+	if err != nil || len(channels) == 0 {
+		return "Каналы не заданы."
+	}
+	lines := make([]string, 0, len(channels))
+	for _, c := range channels {
+		desc := strings.TrimSpace(c.About)
+		if desc == "" {
+			desc = strings.TrimSpace(c.Title)
+		}
+		if desc == "" {
+			lines = append(lines, c.Name)
+		} else {
+			lines = append(lines, fmt.Sprintf("%s — %s", c.Name, desc))
+		}
+	}
+	return "Ваши каналы:\n" + strings.Join(lines, "\n") +
+		"\n\nОтправьте имена каналов, которые нужно убрать (через пробел):"
 }
 
 func buildPrompt(chatID int64, channels []store.Channel, question string) string {
