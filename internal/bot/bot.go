@@ -101,7 +101,7 @@ func (b *Bot) registerCommands(ctx context.Context) error {
 		{Command: "remove_channels", Description: "убрать каналы"},
 		{Command: "list_channels", Description: "показать каналы"},
 		{Command: "delete_me", Description: "удалить аккаунт и все данные"},
-		{Command: "cancel", Description: "отменить вход"},
+		{Command: "cancel", Description: "отменить текущее действие"},
 		{Command: "help", Description: "справка"},
 	}
 	return b.tele.SetMyCommands(ctx, &telego.SetMyCommandsParams{Commands: commands})
@@ -168,7 +168,7 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	case "/qrlogin":
 		b.startQRLogin(ctx, chatID)
 	case "/cancel":
-		b.cancelLogin(ctx, chatID)
+		b.cancel(ctx, chatID)
 	case "/add_channels":
 		b.setAwaitingAdd(chatID)
 		b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
@@ -211,14 +211,17 @@ func (b *Bot) welcome(ctx context.Context, chatID int64) {
 	})
 }
 
-// cancelLogin aborts an in-progress QR login.
-func (b *Bot) cancelLogin(ctx context.Context, chatID int64) {
-	if b.awaitingPassword(chatID) {
-		b.clearAwaitingPassword(chatID)
-		b.reply(ctx, chatID, "Вход отменён.")
-	} else {
-		b.reply(ctx, chatID, "Нет активного входа.")
+// cancel aborts whatever interactive action is in progress: the QR login
+// (2FA step) or waiting for channel names.
+func (b *Bot) cancel(ctx context.Context, chatID int64) {
+	if !b.awaitingPassword(chatID) && !b.awaitingAdd(chatID) && !b.awaitingRemove(chatID) {
+		b.reply(ctx, chatID, "Нет активного действия.")
+		return
 	}
+	b.clearAwaitingPassword(chatID)
+	b.clearAwaitingAdd(chatID)
+	b.clearAwaitingRemove(chatID)
+	b.reply(ctx, chatID, "Действие отменено.")
 }
 
 func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
@@ -694,7 +697,7 @@ const helpText = `👋 Привет! Я ищу ответы по вашим Tele
 ➖ /remove_channels — убрать каналы.
 📋 /list_channels — мои каналы.
 🗑 /delete_me — удалить аккаунт и все данные.
-❌ /cancel — отменить вход.
+❌ /cancel — отменить текущее действие.
 
 После входа добавьте каналы и задайте вопрос текстом или голосом.`
 
