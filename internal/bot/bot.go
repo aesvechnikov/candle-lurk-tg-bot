@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -385,14 +386,32 @@ func (b *Bot) reply(ctx context.Context, chatID int64, text string) {
 	})
 }
 
-// replyMarkdown sends a message with Telegram's legacy Markdown parsing, so
-// the agent's **bold** and [links](url) render instead of showing asterisks.
+// replyMarkdown converts the agent's minimal Markdown (**bold**, [text](url))
+// to Telegram HTML and sends it, so formatting renders instead of showing
+// literal asterisks/brackets.
 func (b *Bot) replyMarkdown(ctx context.Context, chatID int64, text string) {
 	_, _ = b.tele.SendMessage(ctx, &telego.SendMessageParams{
 		ChatID:    telego.ChatID{ID: chatID},
-		Text:      text,
-		ParseMode: "Markdown",
+		Text:      markdownToHTML(text),
+		ParseMode: "HTML",
 	})
+}
+
+var (
+	reBold = regexp.MustCompile(`\*\*(.+?)\*\*`)
+	reLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+)
+
+// markdownToHTML converts the subset of Markdown the agent is allowed to use
+// into Telegram HTML: **bold** -> <b>, [text](url) -> <a>. Everything else is
+// escaped so it is shown verbatim.
+func markdownToHTML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = reBold.ReplaceAllString(s, "<b>$1</b>")
+	s = reLink.ReplaceAllString(s, `<a href="$2">$1</a>`)
+	return s
 }
 
 // isAllowed reports whether a user may use the bot. An empty whitelist allows
