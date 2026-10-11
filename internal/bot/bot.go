@@ -340,11 +340,19 @@ func (b *Bot) listChannels(ctx context.Context, chatID int64) {
 		b.reply(ctx, chatID, "Каналы не заданы. Добавьте: /add_channels @channel1")
 		return
 	}
-	names := make([]string, 0, len(channels))
+	lines := make([]string, 0, len(channels))
 	for _, c := range channels {
-		names = append(names, c.Name)
+		desc := strings.TrimSpace(c.About)
+		if desc == "" {
+			desc = strings.TrimSpace(c.Title)
+		}
+		if desc == "" {
+			lines = append(lines, c.Name)
+		} else {
+			lines = append(lines, fmt.Sprintf("%s — %s", c.Name, desc))
+		}
 	}
-	b.reply(ctx, chatID, "Каналы:\n"+strings.Join(names, "\n"))
+	b.reply(ctx, chatID, "Каналы:\n"+strings.Join(lines, "\n"))
 }
 
 func (b *Bot) handleQuestion(ctx context.Context, chatID int64, question string) {
