@@ -1,10 +1,8 @@
 package tg
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image/png"
 	"log"
 	"os"
 	"path/filepath"
@@ -89,17 +87,15 @@ func (m *Manager) QRLogin(ctx context.Context, userID int64, onToken func(url st
 	return err
 }
 
-// renderQR renders a login token as a PNG QR image, or nil on failure.
+// renderQR renders a login token as a centered PNG QR image, or nil on
+// failure. rsc.io/qr's Code.PNG() (unlike Code.Image()) centers the code with
+// a proper quiet zone and scales each module, producing a scannable image.
 func renderQR(token qrlogin.Token) []byte {
-	img, err := token.Image(qr.M)
+	code, err := qr.Encode(token.URL(), qr.M)
 	if err != nil {
 		return nil
 	}
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return nil
-	}
-	return buf.Bytes()
+	return code.PNG()
 }
 
 func (m *Manager) newClient(userID int64) (*telegram.Client, error) {
