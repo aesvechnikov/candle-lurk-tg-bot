@@ -62,6 +62,11 @@ MTProto-сессии в SQLite не хранятся: это отдельные 
 - Telegram Bot API токен (`@BotFather`)
 - MTProto `api_id`/`api_hash` с https://my.telegram.org/apps
 
+Для голосовых вопросов (необязательно, только при `STT_ENABLED=true`):
+
+- Vosk-модель (`vosk-model-small-ru-0.22`) и `libvosk.so` (бинарь `stt` и библиотека ставятся CI/CD);
+- `ffmpeg`.
+
 ## Сборка
 
 ```bash
@@ -160,9 +165,10 @@ sudo systemctl enable --now backend.service opencode-serve.service bot.service
 ## CI/CD (GitHub Actions)
 
 `.github/workflows/deploy.yml` на каждый push в `main`:
-собирает бинарники на ubuntu-латере (`GOOS=linux GOARCH=amd64`), копирует их вместе с
-`.opencode/` и `opencode.json` на сервер под пользователем `deploy`, затем выполняет
-`sudo /usr/local/bin/deploy-tg` (установка + перезапуск сервисов).
+собирает бинарники на ubuntu-латере (`GOOS=linux GOARCH=amd64`), включая `stt`
+(cgo + Vosk) и `libvosk.so`, копирует их вместе с `.opencode/` и `opencode.json`
+на сервер под пользователем `deploy`, затем выполняет `sudo /usr/local/bin/deploy-tg`
+(установка + перезапуск сервисов).
 
 Секреты репозитория: `DEPLOY_SSH_KEY` (приватный ключ), `DEPLOY_HOST`, `DEPLOY_USER`.
 
