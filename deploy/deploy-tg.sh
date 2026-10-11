@@ -9,12 +9,19 @@ SRC="${1:-/tmp/deploy}"
 DEST="/opt/tg-lurk-ai-bot"
 
 # Бинарники.
-for name in bot backend mcp; do
+for name in bot backend mcp stt; do
   if [ -f "$SRC/$name" ]; then
     install -m 0755 -o lurk_ai_bot -g users "$SRC/$name" "$DEST/bin/$name"
     echo "installed $name"
   fi
 done
+
+# libvosk.so (нужен stt-сервису в рантайме).
+if [ -f "$SRC/libvosk.so" ]; then
+  install -m 0644 "$SRC/libvosk.so" /usr/local/lib/libvosk.so
+  ldconfig || true
+  echo "installed libvosk.so"
+fi
 
 # Конфиг и правила.
 for f in opencode.json AGENTS.md; do
@@ -32,5 +39,5 @@ if [ -d "$SRC/.opencode" ]; then
   echo "installed .opencode"
 fi
 
-systemctl restart backend bot opencode-serve
+systemctl restart backend bot opencode-serve stt
 echo "services restarted"

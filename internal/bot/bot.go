@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"net/http"
+	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
@@ -15,6 +18,7 @@ import (
 	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/backend"
 	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/opencode"
 	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/store"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/stt"
 )
 
 const (
@@ -25,11 +29,14 @@ const (
 // Bot wires the Telegram frontend to the MTProto backend and OpenCode.
 type Bot struct {
 	tele    *telego.Bot
+	token   string
 	store   *store.Store
 	backend *backend.Client
 	oc      *opencode.Client
 	model   string
 	allowed map[string]bool
+	stt     *stt.Client
+	sttOn   bool
 
 	mu     sync.Mutex
 	logins map[int64]bool // chatID -> awaiting the QR 2FA password
@@ -42,6 +49,8 @@ func New(
 	oc *opencode.Client,
 	model string,
 	allowed []string,
+	sttClient *stt.Client,
+	sttEnabled bool,
 ) (*Bot, error) {
 	tg, err := telego.NewBot(token)
 	if err != nil {
@@ -53,11 +62,14 @@ func New(
 	}
 	return &Bot{
 		tele:    tg,
+		token:   token,
 		store:   st,
 		backend: b,
 		oc:      oc,
 		model:   model,
 		allowed: allowedMap,
+		stt:     sttClient,
+		sttOn:   sttEnabled,
 		logins:  map[int64]bool{},
 	}, nil
 }
@@ -98,6 +110,16 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 		return
 	}
 	chatID := msg.Chat.ID
+
+	if msg.Voice != nil {
+		if b.sttOn {
+			b.handleVoice(ctx, chatID, msg.Voice)
+		} else {
+			b.reply(ctx, chatID, "Голосовые сообщения не поддерживаются.")
+		}
+		return
+	}
+
 	text := strings.TrimSpace(msg.Text)
 	if text == "" {
 		return
@@ -306,6 +328,79 @@ func (b *Bot) handleQuestion(ctx context.Context, chatID int64, question string)
 	for _, chunk := range splitMessage(answer, msgLimit) {
 		b.replyMarkdown(ctx, chatID, chunk)
 	}
+}
+
+// handleVoice transcribes a voice message and feeds the recognized text into
+// the normal question pipeline.
+func (b *Bot) handleVoice(ctx context.Context, chatID int64, voice *telego.Voice) {
+	b.reply(ctx, chatID, "Распознаю голосовое…")
+
+	pcm, err := b.voiceToPCM(ctx, voice.FileID)
+	if err != nil {
+		b.reply(ctx, chatID, "Не удалось обработать голосовое: "+err.Error())
+		return
+	}
+	text, err := b.stt.Transcribe(ctx, pcm)
+	if err != nil {
+		b.reply(ctx, chatID, "Не удалось распознать голосовое: "+err.Error())
+		return
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		b.reply(ctx, chatID, "Не удалось распознать речь.")
+		return
+	}
+	b.reply(ctx, chatID, "Распознано: "+text)
+	b.handleQuestion(ctx, chatID, text)
+}
+
+// voiceToPCM downloads a voice note and converts it to 16 kHz mono s16le PCM.
+func (b *Bot) voiceToPCM(ctx context.Context, fileID string) ([]byte, error) {
+	file, err := b.tele.GetFile(ctx, &telego.GetFileParams{FileID: fileID})
+	if err != nil {
+		return nil, err
+	}
+	ogg, err := b.downloadFile(ctx, file.FilePath)
+	if err != nil {
+		return nil, err
+	}
+	return convertToPCM(ctx, ogg)
+}
+
+func (b *Bot) downloadFile(ctx context.Context, filePath string) ([]byte, error) {
+	url := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", b.token, filePath)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("download status %d", resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+// convertToPCM converts OGG/Opus audio to raw 16 kHz mono s16le PCM via ffmpeg.
+func convertToPCM(ctx context.Context, ogg []byte) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "ffmpeg",
+		"-i", "pipe:0",
+		"-f", "s16le",
+		"-ac", "1",
+		"-ar", "16000",
+		"pipe:1",
+	)
+	cmd.Stdin = bytes.NewReader(ogg)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg: %w: %s", err, errBuf.String())
+	}
+	return out.Bytes(), nil
 }
 
 func (b *Bot) reply(ctx context.Context, chatID int64, text string) {

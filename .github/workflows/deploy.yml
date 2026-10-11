@@ -29,6 +29,15 @@ jobs:
           go build -o dist/backend ./cmd/backend
           go build -o dist/mcp     ./cmd/mcp
 
+      - name: Build STT (Vosk, cgo)
+        run: |
+          wget -q https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-x86_64-0.3.45.zip
+          unzip -o -q vosk-linux-x86_64-0.3.45.zip
+          VOSK_DIR="$(pwd)/vosk-linux-x86_64-0.3.45"
+          CGO_ENABLED=1 CGO_CFLAGS="-I${VOSK_DIR}" CGO_LDFLAGS="-L${VOSK_DIR} -lvosk -ldl -lpthread" \
+            go build -tags vosk -o dist/stt ./cmd/stt
+          cp "${VOSK_DIR}/libvosk.so" dist/libvosk.so
+
       - name: Copy files to server
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -39,7 +48,7 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/deploy_key \
-            dist/bot dist/backend dist/mcp opencode.json AGENTS.md \
+            dist/bot dist/backend dist/mcp dist/stt dist/libvosk.so opencode.json AGENTS.md \
             "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/deploy/"
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/deploy_key -r \
             .opencode \

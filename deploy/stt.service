@@ -1,0 +1,15 @@
+[Unit]
+Description=tg-lurk-ai-bot stt (Vosk speech-to-text)
+After=network.target
+
+[Service]
+User=lurk_ai_bot
+Group=users
+EnvironmentFile=/etc/tg-lurk-ai-bot/env
+Environment=LD_LIBRARY_PATH=/usr/local/lib
+ExecStart=/opt/tg-lurk-ai-bot/bin/stt
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -114,7 +114,25 @@ mkdir -p "$INSTALL_DIR/data"
 chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR/data"
 
 # ---------------------------------------------------------------------------
-# 5. OpenCode
+# 5. ffmpeg + Vosk model (voice messages)
+# ---------------------------------------------------------------------------
+if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v unzip >/dev/null 2>&1; then
+  log "installing ffmpeg and unzip"
+  apt-get install -y ffmpeg unzip
+fi
+
+VOSK_MODEL_DIR="${INSTALL_DIR}/models/vosk"
+if [ ! -d "$VOSK_MODEL_DIR" ]; then
+  log "downloading Vosk model (small-ru)"
+  mkdir -p "${INSTALL_DIR}/models"
+  curl -fsSL "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip" -o /tmp/vosk-model.zip
+  unzip -o -q /tmp/vosk-model.zip -d "${INSTALL_DIR}/models/"
+  mv "${INSTALL_DIR}/models/vosk-model-small-ru-0.22" "$VOSK_MODEL_DIR"
+fi
+chown -R "$SERVICE_USER":"$SERVICE_USER" "${INSTALL_DIR}/models"
+
+# ---------------------------------------------------------------------------
+# 6. OpenCode
 # ---------------------------------------------------------------------------
 if ! command -v opencode >/dev/null 2>&1; then
   log "installing OpenCode"
@@ -134,7 +152,7 @@ command -v opencode >/dev/null 2>&1 || die "could not locate the opencode binary
 log "opencode $(opencode --version 2>/dev/null || echo 'installed')"
 
 # ---------------------------------------------------------------------------
-# 6. Env file
+# 7. Env file
 # ---------------------------------------------------------------------------
 if [ ! -f "$ENV_FILE" ]; then
   log "creating env file ${ENV_FILE}"
@@ -161,7 +179,7 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Validate env and install services
+# 8. Validate env and install services
 # ---------------------------------------------------------------------------
 set -a; . "$ENV_FILE"; set +a
 missing=""

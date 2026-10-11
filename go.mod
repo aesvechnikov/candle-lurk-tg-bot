@@ -3,6 +3,7 @@ module github.com/aesvechnikov/tg-lurk-ai-bot
 go 1.26.2
 
 require (
+	github.com/alphacep/vosk-api/go v0.3.50
 	github.com/gotd/log v0.1.0
 	github.com/gotd/td v0.161.0
 	github.com/mark3labs/mcp-go v1.0.0

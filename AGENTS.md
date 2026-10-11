@@ -14,8 +14,9 @@
 
 ## Работа с кодом
 
-- Go-проект, стек: gotd (MTProto), telego (Telegram Bot API), mcp-go, SQLite.
-- Три бинарника (`bot`, `backend`, `mcp`) + headless `opencode serve` с агентом `answer`.
+- Go-проект, стек: gotd (MTProto), telego (Telegram Bot API), mcp-go, SQLite, vosk (STT).
+- Бинарники `bot`, `backend`, `mcp` + `stt` (STT-сервис, собирается отдельно с `-tags vosk` и cgo)
+  и headless `opencode serve` с агентом `answer`.
 - Сборка: `go build ./...`. Линк/проверка: `go vet ./...`. Тесты: `go test ./...`.
 - Не коммить `.env`, `data/`, `bin/`, `dist/`.
 

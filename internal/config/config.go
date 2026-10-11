@@ -39,6 +39,11 @@ type Config struct {
 	// AllowedUsers is the whitelist of Telegram usernames (without @) that may
 	// use the bot. Empty means everyone is allowed.
 	AllowedUsers []string
+
+	// STTEnabled toggles voice-message transcription via the local Vosk STT
+	// service. STTAddr is the address of that service.
+	STTEnabled bool
+	STTAddr    string
 }
 
 // Load reads configuration from environment variables. Missing optional
@@ -57,6 +62,8 @@ func Load() (Config, error) {
 		DataDir:          getenv("DATA_DIR", "./data"),
 		BackendAddr:      getenv("BACKEND_ADDR", "127.0.0.1:9090"),
 		AllowedUsers:     splitList(os.Getenv("ALLOWED_USERS")),
+		STTEnabled:       os.Getenv("STT_ENABLED") == "true" || os.Getenv("STT_ENABLED") == "1",
+		STTAddr:          getenv("STT_ADDR", "127.0.0.1:2700"),
 	}
 
 	if v := os.Getenv("TG_API_ID"); v != "" {

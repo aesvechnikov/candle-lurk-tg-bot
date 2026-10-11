@@ -4,8 +4,8 @@ import "testing"
 
 func TestCleanUsername(t *testing.T) {
 	cases := map[string]string{
-		"@foo":   "foo",
-		"foo":    "foo",
+		"@foo":    "foo",
+		"foo":     "foo",
 		"  @bar ": "bar",
 	}
 	for in, want := range cases {

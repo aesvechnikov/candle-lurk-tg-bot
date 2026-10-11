@@ -13,6 +13,7 @@ import (
 	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/config"
 	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/opencode"
 	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/store"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/stt"
 )
 
 func main() {
@@ -40,7 +41,12 @@ func main() {
 	backendClient := backend.NewClient(cfg.BackendAddr)
 	oc := opencode.New(cfg.OpenCodeURL, cfg.OpenCodeUsername, cfg.OpenCodePassword)
 
-	b, err := bot.New(cfg.BotToken, st, backendClient, oc, cfg.OpenCodeModel, cfg.AllowedUsers)
+	var sttClient *stt.Client
+	if cfg.STTEnabled {
+		sttClient = stt.NewClient(cfg.STTAddr)
+	}
+
+	b, err := bot.New(cfg.BotToken, st, backendClient, oc, cfg.OpenCodeModel, cfg.AllowedUsers, sttClient, cfg.STTEnabled)
 	if err != nil {
 		log.Fatal(err)
 	}
