@@ -49,5 +49,13 @@ if [ -d "$SRC/.opencode" ]; then
   echo "installed .opencode"
 fi
 
+# systemd units (ExecStart paths etc.).
+for f in "$SRC"/*.service; do
+  [ -f "$f" ] || continue
+  install -m 0644 "$f" "/etc/systemd/system/$(basename "$f")"
+  echo "installed $(basename "$f")"
+done
+systemctl daemon-reload
+
 systemctl restart backend bot opencode-serve stt
 echo "services restarted"

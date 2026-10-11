@@ -48,7 +48,7 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/deploy_key \
-            dist/tg-lurk-ai-bot dist/tg-lurk-ai-bot-backend dist/tg-lurk-ai-bot-mcp dist/tg-lurk-ai-bot-stt dist/libvosk.so opencode.json AGENTS.md deploy/deploy-tg.sh \
+            dist/tg-lurk-ai-bot dist/tg-lurk-ai-bot-backend dist/tg-lurk-ai-bot-mcp dist/tg-lurk-ai-bot-stt dist/libvosk.so opencode.json AGENTS.md deploy/deploy-tg.sh deploy/*.service \
             "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/deploy/"
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/deploy_key -r \
             .opencode \
