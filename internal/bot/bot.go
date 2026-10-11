@@ -38,8 +38,9 @@ type Bot struct {
 	stt     *stt.Client
 	sttOn   bool
 
-	mu     sync.Mutex
-	logins map[int64]bool // chatID -> awaiting the QR 2FA password
+	mu         sync.Mutex
+	logins     map[int64]bool // chatID -> awaiting the QR 2FA password
+	pendingAdd map[int64]bool // chatID -> awaiting channel names for /add_channels
 }
 
 func New(
@@ -61,16 +62,17 @@ func New(
 		allowedMap[strings.ToLower(u)] = true
 	}
 	return &Bot{
-		tele:    tg,
-		token:   token,
-		store:   st,
-		backend: b,
-		oc:      oc,
-		model:   model,
-		allowed: allowedMap,
-		stt:     sttClient,
-		sttOn:   sttEnabled,
-		logins:  map[int64]bool{},
+		tele:       tg,
+		token:      token,
+		store:      st,
+		backend:    b,
+		oc:         oc,
+		model:      model,
+		allowed:    allowedMap,
+		stt:        sttClient,
+		sttOn:      sttEnabled,
+		logins:     map[int64]bool{},
+		pendingAdd: map[int64]bool{},
 	}, nil
 }
 
@@ -135,9 +137,13 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 		return
 	}
 
-	// Plain text: either the 2FA password or a question.
+	// Plain text: the 2FA password, channel names, or a question.
 	if b.awaitingPassword(chatID) {
 		b.handleQRPassword(ctx, chatID, text, msg.MessageID)
+		return
+	}
+	if b.awaitingAdd(chatID) {
+		b.handleAddChannelsInput(ctx, chatID, text)
 		return
 	}
 	b.handleQuestion(ctx, chatID, text)
@@ -158,8 +164,17 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	case "/cancel":
 		b.cancelLogin(ctx, chatID)
 	case "/add_channels":
+		if len(args) == 0 {
+			b.setAwaitingAdd(chatID)
+			b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
+			return
+		}
 		b.addChannels(ctx, chatID, args)
 	case "/remove_channel":
+		if len(args) == 0 {
+			b.removeChannelMenu(ctx, chatID)
+			return
+		}
 		b.removeChannels(ctx, chatID, args)
 	case "/list_channels":
 		b.listChannels(ctx, chatID)
@@ -179,9 +194,15 @@ func (b *Bot) handleCallback(ctx context.Context, cq *telego.CallbackQuery) {
 	case "list_channels":
 		b.listChannels(ctx, chatID)
 	case "add_help":
-		b.reply(ctx, chatID, "Добавьте каналы командой:\n/add_channels @channel1 @channel2")
+		b.setAwaitingAdd(chatID)
+		b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
 	case "help":
 		b.welcome(ctx, chatID)
+	default:
+		if strings.HasPrefix(cq.Data, "rm:") {
+			_ = b.store.RemoveChannel(chatID, strings.TrimPrefix(cq.Data, "rm:"))
+			b.listChannels(ctx, chatID)
+		}
 	}
 }
 
@@ -519,6 +540,55 @@ func (b *Bot) clearAwaitingPassword(chatID int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.logins, chatID)
+}
+
+func (b *Bot) setAwaitingAdd(chatID int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.pendingAdd[chatID] = true
+}
+
+func (b *Bot) awaitingAdd(chatID int64) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pendingAdd[chatID]
+}
+
+func (b *Bot) clearAwaitingAdd(chatID int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.pendingAdd, chatID)
+}
+
+// handleAddChannelsInput treats the next plain message as channel names.
+func (b *Bot) handleAddChannelsInput(ctx context.Context, chatID int64, text string) {
+	b.clearAwaitingAdd(chatID)
+	names := strings.Fields(text)
+	if len(names) == 0 {
+		b.reply(ctx, chatID, "Не получил имена каналов.")
+		return
+	}
+	b.addChannels(ctx, chatID, names)
+}
+
+// removeChannelMenu shows one inline button per saved channel.
+func (b *Bot) removeChannelMenu(ctx context.Context, chatID int64) {
+	channels, err := b.store.ListChannels(chatID)
+	if err != nil || len(channels) == 0 {
+		b.reply(ctx, chatID, "Каналы не заданы.")
+		return
+	}
+	var rows [][]telego.InlineKeyboardButton
+	for _, c := range channels {
+		rows = append(rows, []telego.InlineKeyboardButton{
+			{Text: c.Name, CallbackData: "rm:" + c.Name},
+		})
+	}
+	_, _ = b.tele.SendMessage(ctx, &telego.SendMessageParams{
+		ChatID:      telego.ChatID{ID: chatID},
+		Text:        "Выберите канал для удаления:",
+		ReplyMarkup: &telego.InlineKeyboardMarkup{InlineKeyboard: rows},
+	})
 }
 
 func buildPrompt(chatID int64, channels []store.Channel, question string) string {
