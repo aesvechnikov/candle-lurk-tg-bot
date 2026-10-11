@@ -64,56 +64,31 @@ MTProto-сессии в SQLite не хранятся: это отдельные 
 
 Для голосовых вопросов (необязательно, только при `STT_ENABLED=true`):
 
-- Vosk-модель (`vosk-model-small-ru-0.22`) и `libvosk.so` (бинарь `stt` и библиотека ставятся CI/CD);
+- Vosk-модель (`vosk-model-small-ru-0.22`), `libvosk.so` и бинарь `stt`;
 - `ffmpeg`.
 
 ## Сборка
 
 ```bash
 go build ./...
-# бинарники в ./bin (или любую целевую папку)
-go build -o bin/bot ./cmd/bot
+go build -o bin/bot     ./cmd/bot
 go build -o bin/backend ./cmd/backend
-go build -o bin/mcp ./cmd/mcp
+go build -o bin/mcp     ./cmd/mcp
 ```
 
-### Низкая память на VDS (2 ГБ)
-
-Компиляция `github.com/gotd/td/tg` требует больше 2 ГБ RAM, поэтому на VDS с 2 ГБ
-собирайте бинарники на другой машине и заливайте готовыми.
-
-На своей машине (Mac/Linux с достаточной памятью):
-
-```bash
-./cross-compile.sh          # кладёт bot/backend/mcp в dist/ (linux/amd64)
-```
-
-На сервер нужно заливать **только эти три бинарника**. Весь остальной код —
-`.opencode/`, `opencode.json`, `deploy/*.service`, `.env.example` — `deploy.sh`
-сам подтянет через `git clone`:
-
-```bash
-scp dist/bot dist/backend dist/mcp user@IP:/tmp/
-ssh user@IP
-sudo mkdir -p /opt/tg-lurk-ai-bot/bin
-sudo cp /tmp/bot /tmp/backend /tmp/mcp /opt/tg-lurk-ai-bot/bin/
-sudo SKIP_BUILD=1 bash deploy.sh
-```
-
-Либо добавьте swap на VDS и собирайте на месте обычным `sudo bash deploy.sh`.
+`stt` собирается отдельно (нужны cgo и Vosk) — см. «Голосовые вопросы».
 
 ## Настройка
 
-Скопируйте `.env.example` в env-файл (см. `deploy/*.service`, по умолчанию
-`/etc/tg-lurk-ai-bot/env`) и заполните значения. Ключ шифрования сессий:
+Скопируйте `.env.example` в env-файл (путь — в `deploy/*.service`) и заполните значения.
+Ключ шифрования сессий:
 
 ```bash
 openssl rand -hex 32
 ```
 
 OpenCode должен видеть `opencode.json` и `.opencode/` из рабочей директории
-`opencode serve` — в юнитах это `/opt/tg-lurk-ai-bot`. Путь до MCP-бинаря в
-`opencode.json` (`/opt/tg-lurk-ai-bot/bin/mcp`) поправьте под свой деплой.
+`opencode serve`. Путь до MCP-бинаря в `opencode.json` поправьте под свой деплой.
 
 `opencode serve` требует пароль: `OPENCODE_SERVER_PASSWORD` (в `EnvironmentFile`),
 а DeepSeek-ключ передаётся стандартно (`/connect` или `DEEPSEEK_API_KEY`).
@@ -133,20 +108,19 @@ ALLOWED_USERS=alice,bob,carol
 ## Деплой (systemd)
 
 Проще всего — через `deploy.sh`: он ставит Git/Go/OpenCode, клонирует репозиторий,
-собирает бинарники, создаёт env-файл и поднимает все три сервиса.
+собирает бинарники (включая `stt`), ставит ffmpeg, libvosk.so и Vosk-модель, создаёт
+env-файл и поднимает сервисы.
 
 ```bash
 sudo bash deploy.sh
 ```
 
-Первый запуск останавливается после создания env-файла — заполните его
-(`/etc/tg-lurk-ai-bot/env`) и запустите скрипт ещё раз.
+Первый запуск останавливается после создания env-файла — заполните его и запустите
+скрипт ещё раз.
 
 Переменные `deploy.sh`:
 
-- `SKIP_BUILD=1` — не собирать бинарники, использовать уже лежащие в
-  `/opt/tg-lurk-ai-bot/bin/`. Нужен на VDS с 2 ГБ, где сборка gotd падает по
-  памяти (см. «Низкая память»).
+- `SKIP_BUILD=1` — не собирать бинарники, использовать уже лежащие в `bin/`.
 - `GO_VERSION=1.26.2` — версия Go для установки.
 
 `deploy.sh` по итогу делает то же, что вручную:
@@ -154,21 +128,17 @@ sudo bash deploy.sh
 ```bash
 sudo cp deploy/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now backend.service opencode-serve.service bot.service
+sudo systemctl enable --now backend.service opencode-serve.service bot.service stt.service
 ```
 
 Все порты слушают только `127.0.0.1` — наружу ничего не открывается.
 
-Сервисы работают от системного пользователя `lurk_ai_bot` в группе `users`;
-каталог бота — `/opt/tg-lurk-ai-bot`, env-файл — `/etc/tg-lurk-ai-bot/env`.
-
 ## CI/CD (GitHub Actions)
 
 `.github/workflows/deploy.yml` на каждый push в `main`:
-собирает бинарники на ubuntu-латере (`GOOS=linux GOARCH=amd64`), включая `stt`
-(cgo + Vosk) и `libvosk.so`, копирует их вместе с `.opencode/` и `opencode.json`
-на сервер под пользователем `deploy`, затем выполняет `sudo /usr/local/bin/deploy-tg`
-(установка + перезапуск сервисов).
+собирает бинарники (`GOOS=linux GOARCH=amd64`), включая `stt` (cgo + Vosk) и
+`libvosk.so`, копирует их вместе с `.opencode/` и `opencode.json` на сервер, затем
+выполняет установку и перезапуск сервисов.
 
 Секреты репозитория: `DEPLOY_SSH_KEY` (приватный ключ), `DEPLOY_HOST`, `DEPLOY_USER`.
 
@@ -194,9 +164,11 @@ voice → скачать OGG → ffmpeg (PCM 16 кГц) → [stt: Vosk] → те
 Для включения нужно:
 
 - `STT_ENABLED=true` (+ `STT_ADDR`, `STT_MODEL_DIR`) в env;
-- модель `vosk-model-small-ru-0.22` в `/opt/tg-lurk-ai-bot/models/vosk`;
-- `ffmpeg` и `libvosk.so` (в `/usr/local/lib/`);
-- сервис `stt.service` (бинарь `stt` собирается отдельно с `-tags vosk` и cgo, ставится CI/CD).
+- модель `vosk-model-small-ru-0.22` в `STT_MODEL_DIR`;
+- `ffmpeg` и `libvosk.so`;
+- сервис `stt.service` (бинарь `stt` собирается отдельно с `-tags vosk` и cgo).
+
+`deploy.sh` ставит всё это автоматически.
 
 ## Ограничения
 

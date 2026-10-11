@@ -114,11 +114,32 @@ mkdir -p "$INSTALL_DIR/data"
 chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR/data"
 
 # ---------------------------------------------------------------------------
-# 5. ffmpeg + Vosk model (voice messages)
+# 5. ffmpeg + Vosk (voice messages)
 # ---------------------------------------------------------------------------
 if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v unzip >/dev/null 2>&1; then
   log "installing ffmpeg and unzip"
+  apt-get update
   apt-get install -y ffmpeg unzip
+fi
+
+# libvosk.so + vosk_api.h (runtime dependency and cgo build input for stt).
+case "$(dpkg --print-architecture)" in
+  amd64) VOSK_ARCH="x86_64" ;;
+  arm64) VOSK_ARCH="aarch64" ;;
+  *)     die "unsupported architecture for Vosk: $(dpkg --print-architecture)" ;;
+esac
+VOSK_API_VER="0.3.45"
+VOSK_DIR="/tmp/vosk-linux-${VOSK_ARCH}-${VOSK_API_VER}"
+if [ ! -f "${VOSK_DIR}/vosk_api.h" ]; then
+  log "downloading vosk-api ${VOSK_API_VER} (${VOSK_ARCH})"
+  curl -fsSL "https://github.com/alphacep/vosk-api/releases/download/v${VOSK_API_VER}/vosk-linux-${VOSK_ARCH}-${VOSK_API_VER}.zip" \
+    -o /tmp/vosk-api.zip
+  unzip -o -q /tmp/vosk-api.zip -d /tmp/
+fi
+if [ ! -f /usr/local/lib/libvosk.so ]; then
+  log "installing libvosk.so"
+  install -m 0644 "${VOSK_DIR}/libvosk.so" /usr/local/lib/libvosk.so
+  ldconfig
 fi
 
 VOSK_MODEL_DIR="${INSTALL_DIR}/models/vosk"
@@ -130,6 +151,26 @@ if [ ! -d "$VOSK_MODEL_DIR" ]; then
   mv "${INSTALL_DIR}/models/vosk-model-small-ru-0.22" "$VOSK_MODEL_DIR"
 fi
 chown -R "$SERVICE_USER":"$SERVICE_USER" "${INSTALL_DIR}/models"
+
+# Build the stt binary (cgo + Vosk). Skipped with SKIP_BUILD=1.
+if [ "${SKIP_BUILD:-0}" = "1" ]; then
+  log "skipping stt build (SKIP_BUILD=1): using pre-built bin/stt"
+else
+  if ! command -v gcc >/dev/null 2>&1; then
+    log "installing build tools (gcc) for cgo"
+    apt-get update
+    apt-get install -y build-essential
+  fi
+  log "building stt (cgo + vosk)"
+  (
+    cd "$INSTALL_DIR"
+    export PATH="/usr/local/go/bin:$PATH"
+    export GOTOOLCHAIN=auto
+    export GOFLAGS="-buildvcs=false -p=1"
+    CGO_ENABLED=1 CGO_CFLAGS="-I${VOSK_DIR}" CGO_LDFLAGS="-L${VOSK_DIR} -lvosk -ldl -lpthread" \
+      go build -tags vosk -o bin/stt ./cmd/stt
+  )
+fi
 
 # ---------------------------------------------------------------------------
 # 6. OpenCode
@@ -193,10 +234,10 @@ fi
 log "installing systemd units"
 cp "$INSTALL_DIR/deploy/"*.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now backend.service opencode-serve.service bot.service
+systemctl enable --now backend.service opencode-serve.service bot.service stt.service
 
 log "done. status:"
-systemctl --no-pager --lines=0 status backend.service opencode-serve.service bot.service \
+systemctl --no-pager --lines=0 status backend.service opencode-serve.service bot.service stt.service \
   || true
 cat <<EOF
 
