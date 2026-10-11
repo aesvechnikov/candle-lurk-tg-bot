@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "deepseek/deepseek-chat",
+  "model": "deepseek/deepseek-v4-pro",
   "permission": {
     "skill": { "*": "allow" }
   },
