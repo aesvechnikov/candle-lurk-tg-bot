@@ -4,3 +4,4 @@
 .env
 *.session
 .DS_Store
+.idea/
