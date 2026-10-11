@@ -364,15 +364,7 @@ func (b *Bot) listChannels(ctx context.Context, chatID int64) {
 	}
 	lines := make([]string, 0, len(channels))
 	for _, c := range channels {
-		desc := strings.TrimSpace(c.About)
-		if desc == "" {
-			desc = strings.TrimSpace(c.Title)
-		}
-		if desc == "" {
-			lines = append(lines, c.Name)
-		} else {
-			lines = append(lines, fmt.Sprintf("%s — %s", c.Name, desc))
-		}
+		lines = append(lines, formatChannel(c))
 	}
 	b.reply(ctx, chatID, "Каналы:\n"+strings.Join(lines, "\n"))
 }
@@ -627,18 +619,37 @@ func (b *Bot) removePrompt(chatID int64) string {
 	}
 	lines := make([]string, 0, len(channels))
 	for _, c := range channels {
-		desc := strings.TrimSpace(c.About)
-		if desc == "" {
-			desc = strings.TrimSpace(c.Title)
-		}
-		if desc == "" {
-			lines = append(lines, c.Name)
-		} else {
-			lines = append(lines, fmt.Sprintf("%s — %s", c.Name, desc))
-		}
+		lines = append(lines, formatChannel(c))
 	}
 	return "Ваши каналы:\n" + strings.Join(lines, "\n") +
 		"\n\nОтправьте имена каналов, которые нужно убрать (через пробел):"
+}
+
+// formatChannel renders a channel as a compact one-liner for the user:
+// "Title (@username) — short description". The description is truncated to keep
+// channel lists readable.
+func formatChannel(c store.Channel) string {
+	username := "@" + strings.TrimPrefix(strings.TrimSpace(c.Name), "@")
+	title := strings.TrimSpace(c.Title)
+
+	head := username
+	if title != "" && !strings.EqualFold(title, username) {
+		head = fmt.Sprintf("%s (%s)", title, username)
+	}
+
+	about := strings.TrimSpace(c.About)
+	if about == "" {
+		return head
+	}
+	return head + " — " + truncateText(about, 120)
+}
+
+func truncateText(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "…"
 }
 
 func buildPrompt(chatID int64, channels []store.Channel, question string) string {
