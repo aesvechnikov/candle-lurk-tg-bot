@@ -97,9 +97,7 @@ func (b *Bot) Run(ctx context.Context) error {
 func (b *Bot) registerCommands(ctx context.Context) error {
 	commands := []telego.BotCommand{
 		{Command: "qrlogin", Description: "вход через QR-код"},
-		{Command: "add_channels", Description: "добавить каналы"},
 		{Command: "remove_channels", Description: "убрать каналы"},
-		{Command: "list_channels", Description: "показать каналы"},
 		{Command: "delete_me", Description: "удалить аккаунт и все данные"},
 		{Command: "cancel", Description: "отменить текущее действие"},
 		{Command: "help", Description: "справка"},
@@ -192,11 +190,6 @@ func (b *Bot) handleCallback(ctx context.Context, cq *telego.CallbackQuery) {
 	switch cq.Data {
 	case "qrlogin":
 		b.startQRLogin(ctx, chatID)
-	case "list_channels":
-		b.listChannels(ctx, chatID)
-	case "add_help":
-		b.setAwaitingAdd(chatID)
-		b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
 	case "help":
 		b.welcome(ctx, chatID)
 	}
@@ -716,10 +709,6 @@ var welcomeMarkup = &telego.InlineKeyboardMarkup{
 	InlineKeyboard: [][]telego.InlineKeyboardButton{
 		{
 			{Text: "🔑 Войти", CallbackData: "qrlogin"},
-			{Text: "📋 Мои каналы", CallbackData: "list_channels"},
-		},
-		{
-			{Text: "➕ Добавить каналы", CallbackData: "add_help"},
 			{Text: "ℹ️ Помощь", CallbackData: "help"},
 		},
 	},
