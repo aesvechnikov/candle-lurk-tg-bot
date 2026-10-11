@@ -96,12 +96,17 @@ func (b *Bot) registerCommands(ctx context.Context) error {
 		{Command: "add_channels", Description: "добавить каналы"},
 		{Command: "remove_channel", Description: "убрать канал"},
 		{Command: "list_channels", Description: "показать каналы"},
+		{Command: "cancel", Description: "отменить вход"},
 		{Command: "help", Description: "справка"},
 	}
 	return b.tele.SetMyCommands(ctx, &telego.SetMyCommandsParams{Commands: commands})
 }
 
 func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
+	if upd.CallbackQuery != nil {
+		b.handleCallback(ctx, upd.CallbackQuery)
+		return
+	}
 	msg := upd.Message
 	if msg == nil {
 		return
@@ -144,10 +149,14 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	args := fields[1:]
 
 	switch cmd {
-	case "/start", "/help":
+	case "/start":
+		b.welcome(ctx, chatID)
+	case "/help":
 		b.reply(ctx, chatID, helpText)
 	case "/qrlogin":
 		b.startQRLogin(ctx, chatID)
+	case "/cancel":
+		b.cancelLogin(ctx, chatID)
 	case "/add_channels":
 		b.addChannels(ctx, chatID, args)
 	case "/remove_channel":
@@ -156,6 +165,42 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 		b.listChannels(ctx, chatID)
 	default:
 		b.reply(ctx, chatID, "Неизвестная команда. /help — список команд.")
+	}
+}
+
+// handleCallback answers an inline keyboard button press.
+func (b *Bot) handleCallback(ctx context.Context, cq *telego.CallbackQuery) {
+	_ = b.tele.AnswerCallbackQuery(ctx, &telego.AnswerCallbackQueryParams{CallbackQueryID: cq.ID})
+	chatID := cq.From.ID
+
+	switch cq.Data {
+	case "qrlogin":
+		b.startQRLogin(ctx, chatID)
+	case "list_channels":
+		b.listChannels(ctx, chatID)
+	case "add_help":
+		b.reply(ctx, chatID, "Добавьте каналы командой:\n/add_channels @channel1 @channel2")
+	case "help":
+		b.welcome(ctx, chatID)
+	}
+}
+
+// welcome sends the greeting with quick-action buttons.
+func (b *Bot) welcome(ctx context.Context, chatID int64) {
+	_, _ = b.tele.SendMessage(ctx, &telego.SendMessageParams{
+		ChatID:      telego.ChatID{ID: chatID},
+		Text:        helpText,
+		ReplyMarkup: welcomeMarkup,
+	})
+}
+
+// cancelLogin aborts an in-progress QR login.
+func (b *Bot) cancelLogin(ctx context.Context, chatID int64) {
+	if b.awaitingPassword(chatID) {
+		b.clearAwaitingPassword(chatID)
+		b.reply(ctx, chatID, "Вход отменён.")
+	} else {
+		b.reply(ctx, chatID, "Нет активного входа.")
 	}
 }
 
@@ -512,12 +557,26 @@ func splitMessage(text string, limit int) []string {
 	return out
 }
 
-const helpText = `Бот ищет ответы по вашим Telegram-каналам.
+const helpText = `👋 Привет! Я ищу ответы по вашим Telegram-каналам.
 
 Команды:
-/qrlogin — вход через QR-код (сканируете и подтверждаете на телефоне).
-/add_channels @ch1 @ch2 — добавить каналы.
-/remove_channel @ch1 — убрать канал.
-/list_channels — показать каналы.
+🔑 /qrlogin — войти через QR-код.
+➕ /add_channels @ch1 @ch2 — добавить каналы.
+➖ /remove_channel @ch — убрать канал.
+📋 /list_channels — мои каналы.
+❌ /cancel — отменить вход.
 
-После этого просто напишите вопрос обычным текстом — бот найдёт ответ и пришлёт ссылки на источники.`
+После входа просто напишите вопрос текстом или голосом — я найду ответ и пришлю ссылки на источники.`
+
+var welcomeMarkup = &telego.InlineKeyboardMarkup{
+	InlineKeyboard: [][]telego.InlineKeyboardButton{
+		{
+			{Text: "🔑 Войти", CallbackData: "qrlogin"},
+			{Text: "📋 Мои каналы", CallbackData: "list_channels"},
+		},
+		{
+			{Text: "➕ Добавить каналы", CallbackData: "add_help"},
+			{Text: "ℹ️ Помощь", CallbackData: "help"},
+		},
+	},
+}
