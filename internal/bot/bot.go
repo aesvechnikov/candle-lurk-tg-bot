@@ -168,6 +168,10 @@ func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
 		case "done":
 			b.reply(ctx, chatID, "Готово, вход выполнен.")
 			return
+		case "password":
+			b.setLogin(chatID, loginState{step: "qr_password"})
+			b.reply(ctx, chatID, "Введите пароль двухфакторной аутентификации:")
+			return
 		case "refresh":
 			refreshes++
 			if refreshes > maxRefreshes {
@@ -272,6 +276,17 @@ func (b *Bot) handleLoginInput(ctx context.Context, chatID int64, text string) {
 		if status == "done" {
 			b.clearLogin(chatID)
 			_ = b.store.UpsertUser(chatID, state.phone)
+			b.reply(ctx, chatID, "Готово, вход выполнен.")
+		}
+	case "qr_password":
+		status, err := b.backend.QRLoginPassword(ctx, chatID, text)
+		if err != nil {
+			b.clearLogin(chatID)
+			b.reply(ctx, chatID, friendlyLoginError(err))
+			return
+		}
+		if status == "done" {
+			b.clearLogin(chatID)
 			b.reply(ctx, chatID, "Готово, вход выполнен.")
 		}
 	}

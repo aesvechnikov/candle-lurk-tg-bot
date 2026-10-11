@@ -12,6 +12,7 @@ import (
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 	"rsc.io/qr"
 )
 
@@ -53,10 +54,17 @@ func (m *Manager) ImportSession(userID int64, sessionData []byte) error {
 }
 
 // QRLogin runs the Telegram QR-code login flow. onToken is called each time a
-// login token is (re)generated, with the login URL and a PNG-encoded QR image
-// (may be nil if rendering failed). It blocks until the user approves the
-// login on their phone or ctx is cancelled.
-func (m *Manager) QRLogin(ctx context.Context, userID int64, onToken func(url string, png []byte)) error {
+// login token is (re)generated, with the login URL and a PNG-encoded QR image.
+// If the account has two-step verification, onPass is called once the QR is
+// scanned and the 2FA password must be read from passCh. It blocks until the
+// login completes or ctx is cancelled.
+func (m *Manager) QRLogin(
+	ctx context.Context,
+	userID int64,
+	onToken func(url string, png []byte),
+	onPass func(),
+	passCh <-chan string,
+) error {
 	_ = os.Remove(m.sessionPath(userID))
 
 	st, err := NewEncryptedStorage(m.sessionPath(userID), m.sessKey)
@@ -81,6 +89,19 @@ func (m *Manager) QRLogin(ctx context.Context, userID int64, onToken func(url st
 			onToken(token.URL(), renderQR(token))
 			return nil
 		})
+		if tgerr.Is(err, "SESSION_PASSWORD_NEEDED") {
+			log.Printf("qrlogin: 2FA required user=%d", userID)
+			if onPass != nil {
+				onPass()
+			}
+			select {
+			case pass := <-passCh:
+				_, err = client.Auth().Password(ctx, pass)
+				return err
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 		return err
 	})
 	log.Printf("qrlogin: result user=%d err=%v", userID, err)

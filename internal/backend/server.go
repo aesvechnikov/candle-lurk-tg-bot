@@ -35,9 +35,11 @@ type qrData struct {
 }
 
 type pendingQR struct {
-	ch     chan qrData
-	done   chan error
-	cancel context.CancelFunc
+	ch      chan qrData
+	passCh  chan string
+	passReq chan struct{}
+	done    chan error
+	cancel  context.CancelFunc
 }
 
 func NewServer(mgr *tg.Manager) *Server {
@@ -57,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/import", s.handleImport)
 	mux.HandleFunc("/qrlogin/start", s.handleQRStart)
 	mux.HandleFunc("/qrlogin/poll", s.handleQRPoll)
+	mux.HandleFunc("/qrlogin/password", s.handleQRPassword)
 	mux.HandleFunc("/search", s.handleSearch)
 	return mux
 }
@@ -208,20 +211,26 @@ func (s *Server) handleQRStart(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	pa := &pendingQR{
-		ch:     make(chan qrData, 1),
-		done:   make(chan error, 1),
-		cancel: cancel,
+		ch:      make(chan qrData, 1),
+		passCh:  make(chan string, 1),
+		passReq: make(chan struct{}),
+		done:    make(chan error, 1),
+		cancel:  cancel,
 	}
 	s.qrPending[req.UserID] = pa
 	s.mu.Unlock()
 
 	go func() {
-		pa.done <- s.mgr.QRLogin(ctx, req.UserID, func(url string, png []byte) {
-			select {
-			case pa.ch <- qrData{url: url, png: png}:
-			default:
-			}
-		})
+		pa.done <- s.mgr.QRLogin(ctx, req.UserID,
+			func(url string, png []byte) {
+				select {
+				case pa.ch <- qrData{url: url, png: png}:
+				default:
+				}
+			},
+			func() { close(pa.passReq) },
+			pa.passCh,
+		)
 	}()
 
 	select {
@@ -264,8 +273,44 @@ func (s *Server) handleQRPoll(w http.ResponseWriter, r *http.Request) {
 		}
 	case d := <-pa.ch:
 		writeQR(w, http.StatusOK, "refresh", d)
+	case <-pa.passReq:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "password"})
 	case <-time.After(60 * time.Second):
 		writeJSON(w, http.StatusOK, map[string]string{"status": "timeout"})
+	}
+}
+
+// handleQRPassword submits the 2FA password for an in-progress QR login.
+func (s *Server) handleQRPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID   int64  `json:"user_id"`
+		Password string `json:"password"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+
+	pa := s.getQR(req.UserID)
+	if pa == nil {
+		writeError(w, http.StatusNotFound, "no qr login in progress")
+		return
+	}
+
+	select {
+	case pa.passCh <- req.Password:
+	default:
+	}
+
+	select {
+	case err := <-pa.done:
+		s.cleanupQR(req.UserID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+		} else {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "done"})
+		}
+	case <-time.After(90 * time.Second):
+		writeError(w, http.StatusRequestTimeout, "login step timed out")
 	}
 }
 

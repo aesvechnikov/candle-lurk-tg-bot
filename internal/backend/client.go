@@ -100,6 +100,17 @@ func (c *Client) QRLoginPoll(ctx context.Context, userID int64) (status, url, pn
 	return resp.Status, resp.URL, resp.PNG, nil
 }
 
+// QRLoginPassword submits the 2FA password for an in-progress QR login.
+func (c *Client) QRLoginPassword(ctx context.Context, userID int64, password string) (string, error) {
+	var resp struct {
+		Status string `json:"status"`
+	}
+	if err := c.post(ctx, "/qrlogin/password", map[string]any{"user_id": userID, "password": password}, &resp); err != nil {
+		return "", err
+	}
+	return resp.Status, nil
+}
+
 // Search queries the backend for messages matching query in channels.
 func (c *Client) Search(ctx context.Context, userID int64, channels []string, query string, limit int) ([]tg.Result, error) {
 	var results []tg.Result
