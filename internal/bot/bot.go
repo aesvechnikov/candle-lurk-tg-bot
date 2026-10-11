@@ -482,7 +482,7 @@ func (b *Bot) listChannels(ctx context.Context, chatID int64) {
 	for _, c := range channels {
 		lines = append(lines, formatChannel(c))
 	}
-	b.reply(ctx, chatID, "Каналы:\n"+strings.Join(lines, "\n"))
+	b.reply(ctx, chatID, "Каналы:\n"+strings.Join(lines, "\n\n"))
 }
 
 // deleteMe removes the user's session and saved channels, effectively
@@ -765,7 +765,7 @@ func (b *Bot) removePrompt(chatID int64) string {
 	for _, c := range channels {
 		lines = append(lines, formatChannel(c))
 	}
-	return "Ваши каналы:\n" + strings.Join(lines, "\n") +
+	return "Ваши каналы:\n" + strings.Join(lines, "\n\n") +
 		"\n\nОтправьте имена каналов, которые нужно убрать (через пробел):"
 }
 
