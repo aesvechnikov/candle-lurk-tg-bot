@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	agentName = "answer"
-	msgLimit  = 4000 // Telegram text message limit is 4096; keep a safety margin.
+	agentName            = "answer"
+	describeChannelAgent = "describe-channel"
+	msgLimit             = 4000 // Telegram text message limit is 4096; keep a safety margin.
 )
 
 // Bot wires the Telegram frontend to the MTProto backend and OpenCode.
@@ -208,7 +209,7 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 			return
 		}
 		b.setAwaitingAdd(chatID)
-		b.reply(ctx, chatID, "Отправьте имена каналов (@channel1 @channel2), ссылку t.me/канал или перешлите любое сообщение из канала.")
+		b.reply(ctx, chatID, "Отправьте имена каналов (@channel1 @channel2) или ссылку t.me/канал.")
 	case "/remove_channels":
 		if !b.requireAuth(ctx, chatID) {
 			return
@@ -398,7 +399,7 @@ func (b *Bot) addChannels(ctx context.Context, chatID int64, names []string) {
 		c := store.Channel{Name: username}
 		if title, about, err := b.backend.ChannelInfo(ctx, chatID, username); err == nil {
 			c.Title = title
-			c.About = about
+			c.About = b.summarizeChannel(ctx, title, about)
 		}
 		channels = append(channels, c)
 	}
@@ -424,6 +425,23 @@ func (b *Bot) removeChannels(ctx context.Context, chatID int64, channels []strin
 		}
 	}
 	b.listChannels(ctx, chatID)
+}
+
+// summarizeChannel asks the model for a one-sentence description of the
+// channel's content, without links or contact info. Falls back to the raw
+// description if the model is unavailable.
+func (b *Bot) summarizeChannel(ctx context.Context, title, about string) string {
+	title = strings.TrimSpace(title)
+	about = strings.TrimSpace(about)
+	if title == "" && about == "" {
+		return ""
+	}
+	prompt := fmt.Sprintf("Опиши кратко, о чём канал «%s».\nОписание канала: %s", title, about)
+	summary, err := b.oc.Chat(ctx, describeChannelAgent, b.model, prompt)
+	if err != nil || strings.TrimSpace(summary) == "" {
+		return about
+	}
+	return strings.TrimSpace(summary)
 }
 
 // channelUsername normalizes a channel reference to a bare username:
