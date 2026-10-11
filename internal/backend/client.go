@@ -19,6 +19,11 @@ type Client struct {
 	http    *http.Client
 }
 
+// SharedUserID is the backend user id under which the shared (service) session
+// lives; it backs anonymous access to public channels when a user has not
+// logged in with their own account.
+const SharedUserID = tg.SharedUserID
+
 func NewClient(addr string) *Client {
 	base := addr
 	if !strings.Contains(base, "://") {

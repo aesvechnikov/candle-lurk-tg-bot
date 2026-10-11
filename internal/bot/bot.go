@@ -35,13 +35,15 @@ type Bot struct {
 	oc      *opencode.Client
 	model   string
 	allowed map[string]bool
+	admin   map[string]bool
 	stt     *stt.Client
 	sttOn   bool
 
 	mu            sync.Mutex
-	logins        map[int64]bool // chatID -> awaiting the QR 2FA password
-	pendingAdd    map[int64]bool // chatID -> awaiting channel names for /add_channels
-	pendingRemove map[int64]bool // chatID -> awaiting channel names for /remove_channels
+	logins        map[int64]bool  // chatID -> awaiting the QR 2FA password
+	loginTarget   map[int64]int64 // chatID -> backend user id being logged in
+	pendingAdd    map[int64]bool  // chatID -> awaiting channel names for /add_channels
+	pendingRemove map[int64]bool  // chatID -> awaiting channel names for /remove_channels
 }
 
 func New(
@@ -51,6 +53,7 @@ func New(
 	oc *opencode.Client,
 	model string,
 	allowed []string,
+	admin []string,
 	sttClient *stt.Client,
 	sttEnabled bool,
 ) (*Bot, error) {
@@ -62,6 +65,10 @@ func New(
 	for _, u := range allowed {
 		allowedMap[strings.ToLower(u)] = true
 	}
+	adminMap := make(map[string]bool, len(admin))
+	for _, u := range admin {
+		adminMap[strings.ToLower(u)] = true
+	}
 	return &Bot{
 		tele:          tg,
 		token:         token,
@@ -70,9 +77,11 @@ func New(
 		oc:            oc,
 		model:         model,
 		allowed:       allowedMap,
+		admin:         adminMap,
 		stt:           sttClient,
 		sttOn:         sttEnabled,
 		logins:        map[int64]bool{},
+		loginTarget:   map[int64]int64{},
 		pendingAdd:    map[int64]bool{},
 		pendingRemove: map[int64]bool{},
 	}, nil
@@ -96,7 +105,7 @@ func (b *Bot) Run(ctx context.Context) error {
 // when the user types "/".
 func (b *Bot) registerCommands(ctx context.Context) error {
 	commands := []telego.BotCommand{
-		{Command: "qrlogin", Description: "вход через QR-код"},
+		{Command: "qrlogin", Description: "вход через QR-код (свой аккаунт)"},
 		{Command: "add_channels", Description: "добавить каналы"},
 		{Command: "remove_channels", Description: "убрать каналы"},
 		{Command: "list_channels", Description: "показать каналы"},
@@ -119,6 +128,10 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 		return
 	}
 	chatID := msg.Chat.ID
+	username := ""
+	if msg.From != nil {
+		username = msg.From.Username
+	}
 
 	if msg.Voice != nil {
 		if b.sttOn {
@@ -135,7 +148,7 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 	}
 
 	if strings.HasPrefix(text, "/") {
-		b.handleCommand(ctx, chatID, text)
+		b.handleCommand(ctx, chatID, text, username)
 		return
 	}
 
@@ -155,7 +168,7 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 	b.handleQuestion(ctx, chatID, text)
 }
 
-func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
+func (b *Bot) handleCommand(ctx context.Context, chatID int64, text, username string) {
 	fields := strings.Fields(text)
 	cmd := strings.ToLower(fields[0])
 
@@ -165,7 +178,13 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	case "/help":
 		b.reply(ctx, chatID, helpText)
 	case "/qrlogin":
-		b.startQRLogin(ctx, chatID)
+		b.startQRLogin(ctx, chatID, chatID)
+	case "/qrlogin_shared":
+		if !b.isAdmin(username) {
+			b.reply(ctx, chatID, "Эта команда доступна только администраторам.")
+			return
+		}
+		b.startQRLogin(ctx, chatID, backend.SharedUserID)
 	case "/cancel":
 		b.cancelLogin(ctx, chatID)
 	case "/add_channels":
@@ -188,7 +207,7 @@ func (b *Bot) handleCallback(ctx context.Context, cq *telego.CallbackQuery) {
 
 	switch cq.Data {
 	case "qrlogin":
-		b.startQRLogin(ctx, chatID)
+		b.startQRLogin(ctx, chatID, chatID)
 	case "list_channels":
 		b.listChannels(ctx, chatID)
 	case "add_help":
@@ -212,31 +231,35 @@ func (b *Bot) welcome(ctx context.Context, chatID int64) {
 func (b *Bot) cancelLogin(ctx context.Context, chatID int64) {
 	if b.awaitingPassword(chatID) {
 		b.clearAwaitingPassword(chatID)
+		b.clearLoginTarget(chatID)
 		b.reply(ctx, chatID, "Вход отменён.")
 	} else {
 		b.reply(ctx, chatID, "Нет активного входа.")
 	}
 }
 
-func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
-	url, png, err := b.backend.QRLoginStart(ctx, chatID)
+func (b *Bot) startQRLogin(ctx context.Context, chatID, userID int64) {
+	b.setLoginTarget(chatID, userID)
+	_, png, err := b.backend.QRLoginStart(ctx, userID)
 	if err != nil {
 		b.reply(ctx, chatID, "Не удалось начать QR-вход: "+friendlyLoginError(err))
 		return
 	}
-	b.sendQR(ctx, chatID, png, url)
+	b.sendQR(ctx, chatID, png)
 
 	const maxRefreshes = 3
 	refreshes := 0
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
-		status, newURL, newPNG, err := b.backend.QRLoginPoll(ctx, chatID)
+		status, _, newPNG, err := b.backend.QRLoginPoll(ctx, userID)
 		if err != nil {
+			b.clearLoginTarget(chatID)
 			b.reply(ctx, chatID, friendlyLoginError(err))
 			return
 		}
 		switch status {
 		case "done":
+			b.clearLoginTarget(chatID)
 			b.reply(ctx, chatID, "Готово, вход выполнен.")
 			return
 		case "password":
@@ -246,13 +269,15 @@ func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
 		case "refresh":
 			refreshes++
 			if refreshes > maxRefreshes {
-				b.reply(ctx, chatID, "QR-код истекает слишком часто. Попробуйте /qrlogin ещё раз.")
+				b.clearLoginTarget(chatID)
+				b.reply(ctx, chatID, "QR-код истекает слишком часто. Попробуйте ещё раз.")
 				return
 			}
-			b.sendQR(ctx, chatID, newPNG, newURL)
+			b.sendQR(ctx, chatID, newPNG)
 		}
 	}
-	b.reply(ctx, chatID, "Время входа истекло. Попробуйте /qrlogin ещё раз.")
+	b.clearLoginTarget(chatID)
+	b.reply(ctx, chatID, "Время входа истекло. Попробуйте ещё раз.")
 }
 
 // friendlyLoginError converts gotd's raw timeout errors into a readable message.
@@ -264,9 +289,11 @@ func friendlyLoginError(err error) string {
 	return "Ошибка входа: " + msg
 }
 
-// sendQR sends the login QR code as a photo, with the tappable URL as caption.
-func (b *Bot) sendQR(ctx context.Context, chatID int64, pngBase64, url string) {
-	caption := "Отсканируйте QR-код приложением Telegram или откройте ссылку и подтвердите вход:\n" + url
+// sendQR sends the login QR code as a photo. The caption intentionally omits
+// the tappable login URL: it carries the same one-time token as the QR, and
+// tapping it (often repeatedly) consumes the token and breaks the login.
+func (b *Bot) sendQR(ctx context.Context, chatID int64, pngBase64 string) {
+	caption := "Отсканируйте QR-код приложением Telegram:\nНастройки → Устройства → Подключить устройство."
 
 	png, err := base64.StdEncoding.DecodeString(pngBase64)
 	if err != nil || len(png) == 0 {
@@ -292,10 +319,12 @@ func (n namedBytes) Name() string { return n.name }
 // handleQRPassword submits the QR 2FA password and deletes the user's message
 // so the password does not linger in the chat history.
 func (b *Bot) handleQRPassword(ctx context.Context, chatID int64, password string, messageID int) {
+	target := b.loginTargetID(chatID)
 	b.clearAwaitingPassword(chatID)
+	b.clearLoginTarget(chatID)
 	b.deleteMessage(ctx, chatID, messageID)
 
-	status, err := b.backend.QRLoginPassword(ctx, chatID, password)
+	status, err := b.backend.QRLoginPassword(ctx, target, password)
 	if err != nil {
 		b.reply(ctx, chatID, friendlyLoginError(err))
 		return
@@ -517,6 +546,15 @@ func (b *Bot) isAllowed(from *telego.User) bool {
 	return b.allowed[strings.ToLower(from.Username)]
 }
 
+// isAdmin reports whether a username may run admin-only commands (e.g. logging
+// in the shared service account). An empty admin list disables admin commands.
+func (b *Bot) isAdmin(username string) bool {
+	if username == "" {
+		return false
+	}
+	return b.admin[strings.ToLower(username)]
+}
+
 func (b *Bot) setAwaitingPassword(chatID int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -533,6 +571,27 @@ func (b *Bot) clearAwaitingPassword(chatID int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.logins, chatID)
+}
+
+func (b *Bot) setLoginTarget(chatID, userID int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.loginTarget[chatID] = userID
+}
+
+func (b *Bot) loginTargetID(chatID int64) int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if id, ok := b.loginTarget[chatID]; ok {
+		return id
+	}
+	return chatID
+}
+
+func (b *Bot) clearLoginTarget(chatID int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.loginTarget, chatID)
 }
 
 func (b *Bot) setAwaitingAdd(chatID int64) {
@@ -659,16 +718,16 @@ func splitMessage(text string, limit int) []string {
 	return out
 }
 
-const helpText = `👋 Привет! Я ищу ответы по вашим Telegram-каналам.
+const helpText = `👋 Привет! Я ищу ответы по Telegram-каналам.
 
 Команды:
-🔑 /qrlogin — войти через QR-код.
 ➕ /add_channels — добавить каналы.
 ➖ /remove_channels — убрать каналы.
 📋 /list_channels — мои каналы.
+🔑 /qrlogin — войти своим аккаунтом (для приватных каналов).
 ❌ /cancel — отменить вход.
 
-После входа просто напишите вопрос текстом или голосом — я найду ответ и пришлю ссылки на источники.`
+Работать можно и без входа — тогда я ищу только по публичным каналам. Просто добавьте каналы и задайте вопрос текстом или голосом.`
 
 var welcomeMarkup = &telego.InlineKeyboardMarkup{
 	InlineKeyboard: [][]telego.InlineKeyboardButton{

@@ -40,6 +40,11 @@ type Config struct {
 	// use the bot. Empty means everyone is allowed.
 	AllowedUsers []string
 
+	// AdminUsers is the whitelist of Telegram usernames (without @) that may
+	// run admin-only commands (e.g. logging in the shared service account).
+	// Empty means admin commands are disabled.
+	AdminUsers []string
+
 	// STTEnabled toggles voice-message transcription via the local Vosk STT
 	// service. STTAddr is the address of that service.
 	STTEnabled bool
@@ -62,6 +67,7 @@ func Load() (Config, error) {
 		DataDir:          getenv("DATA_DIR", "./data"),
 		BackendAddr:      getenv("BACKEND_ADDR", "127.0.0.1:9090"),
 		AllowedUsers:     splitList(os.Getenv("ALLOWED_USERS")),
+		AdminUsers:       splitList(os.Getenv("ADMIN_USERS")),
 		STTEnabled:       os.Getenv("STT_ENABLED") == "true" || os.Getenv("STT_ENABLED") == "1",
 		STTAddr:          getenv("STT_ADDR", "127.0.0.1:2700"),
 	}
