@@ -182,7 +182,7 @@ func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
 			return
 		case "password":
 			b.setAwaitingPassword(chatID)
-			b.reply(ctx, chatID, "Введите пароль двухфакторной аутентификации:")
+			b.reply(ctx, chatID, "Введите пароль двухфакторной аутентификации.\nБот не хранит пароль, а сообщение с ним будет удалено сразу после обработки.")
 			return
 		case "refresh":
 			refreshes++
