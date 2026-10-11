@@ -40,7 +40,7 @@ func main() {
 	backendClient := backend.NewClient(cfg.BackendAddr)
 	oc := opencode.New(cfg.OpenCodeURL, cfg.OpenCodeUsername, cfg.OpenCodePassword)
 
-	b, err := bot.New(cfg.BotToken, st, backendClient, oc, cfg.OpenCodeModel)
+	b, err := bot.New(cfg.BotToken, st, backendClient, oc, cfg.OpenCodeModel, cfg.AllowedUsers)
 	if err != nil {
 		log.Fatal(err)
 	}

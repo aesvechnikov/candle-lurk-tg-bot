@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config aggregates environment-driven settings shared by the bot,
@@ -34,6 +35,10 @@ type Config struct {
 
 	// BackendAddr is host:port the backend listens on and the bot/MCP dial.
 	BackendAddr string
+
+	// AllowedUsers is the whitelist of Telegram usernames (without @) that may
+	// use the bot. Empty means everyone is allowed.
+	AllowedUsers []string
 }
 
 // Load reads configuration from environment variables. Missing optional
@@ -51,6 +56,7 @@ func Load() (Config, error) {
 		OpenCodeModel:    getenv("OPENCODE_MODEL", "deepseek/deepseek-v4-pro"),
 		DataDir:          getenv("DATA_DIR", "./data"),
 		BackendAddr:      getenv("BACKEND_ADDR", "127.0.0.1:9090"),
+		AllowedUsers:     splitList(os.Getenv("ALLOWED_USERS")),
 	}
 
 	if v := os.Getenv("TG_API_ID"); v != "" {
@@ -92,4 +98,16 @@ func getenv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// splitList splits a comma-separated list, trimming spaces and a leading "@".
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimPrefix(strings.TrimSpace(p), "@")
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

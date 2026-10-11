@@ -28,13 +28,14 @@ type Bot struct {
 	backend *backend.Client
 	oc      *opencode.Client
 	model   string
+	allowed map[string]bool
 
 	mu     sync.Mutex
 	logins map[int64]loginState
 }
 
 type loginState struct {
-	step  string // "code" or "password"
+	step  string // "code", "password" or "qr_password"
 	phone string
 }
 
@@ -44,10 +45,15 @@ func New(
 	b *backend.Client,
 	oc *opencode.Client,
 	model string,
+	allowed []string,
 ) (*Bot, error) {
 	tg, err := telego.NewBot(token)
 	if err != nil {
 		return nil, err
+	}
+	allowedMap := make(map[string]bool, len(allowed))
+	for _, u := range allowed {
+		allowedMap[strings.ToLower(u)] = true
 	}
 	return &Bot{
 		tele:    tg,
@@ -55,6 +61,7 @@ func New(
 		backend: b,
 		oc:      oc,
 		model:   model,
+		allowed: allowedMap,
 		logins:  map[int64]loginState{},
 	}, nil
 }
@@ -92,6 +99,9 @@ func (b *Bot) registerCommands(ctx context.Context) error {
 func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 	msg := upd.Message
 	if msg == nil {
+		return
+	}
+	if !b.isAllowed(msg.From) {
 		return
 	}
 	chatID := msg.Chat.ID
@@ -364,7 +374,7 @@ func (b *Bot) handleQuestion(ctx context.Context, chatID int64, question string)
 		return
 	}
 	for _, chunk := range splitMessage(answer, msgLimit) {
-		b.reply(ctx, chatID, chunk)
+		b.replyMarkdown(ctx, chatID, chunk)
 	}
 }
 
@@ -373,6 +383,28 @@ func (b *Bot) reply(ctx context.Context, chatID int64, text string) {
 		ChatID: telego.ChatID{ID: chatID},
 		Text:   text,
 	})
+}
+
+// replyMarkdown sends a message with Telegram's legacy Markdown parsing, so
+// the agent's **bold** and [links](url) render instead of showing asterisks.
+func (b *Bot) replyMarkdown(ctx context.Context, chatID int64, text string) {
+	_, _ = b.tele.SendMessage(ctx, &telego.SendMessageParams{
+		ChatID:    telego.ChatID{ID: chatID},
+		Text:      text,
+		ParseMode: "Markdown",
+	})
+}
+
+// isAllowed reports whether a user may use the bot. An empty whitelist allows
+// everyone; otherwise the user's Telegram username must be listed.
+func (b *Bot) isAllowed(from *telego.User) bool {
+	if len(b.allowed) == 0 {
+		return true
+	}
+	if from == nil || from.Username == "" {
+		return false
+	}
+	return b.allowed[strings.ToLower(from.Username)]
 }
 
 func (b *Bot) setLogin(chatID int64, s loginState) {
