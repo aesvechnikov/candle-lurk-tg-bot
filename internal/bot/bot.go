@@ -192,7 +192,7 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	case "/start":
 		b.welcome(ctx, chatID)
 	case "/help":
-		b.reply(ctx, chatID, helpText)
+		b.reply(ctx, chatID, b.helpTextFor(ctx, chatID))
 	case "/qrlogin":
 		b.startQRLogin(ctx, chatID)
 	case "/cancel":
@@ -238,9 +238,18 @@ func (b *Bot) handleCallback(ctx context.Context, cq *telego.CallbackQuery) {
 func (b *Bot) welcome(ctx context.Context, chatID int64) {
 	_, _ = b.tele.SendMessage(ctx, &telego.SendMessageParams{
 		ChatID:      telego.ChatID{ID: chatID},
-		Text:        helpText,
+		Text:        b.helpTextFor(ctx, chatID),
 		ReplyMarkup: welcomeMarkup,
 	})
+}
+
+// helpTextFor returns the full help after login and the guest help before.
+func (b *Bot) helpTextFor(ctx context.Context, chatID int64) string {
+	ok, err := b.backend.Authorized(ctx, chatID)
+	if err == nil && ok {
+		return helpText
+	}
+	return guestHelpText
 }
 
 // cancel aborts whatever interactive action is in progress: the QR login
@@ -764,6 +773,18 @@ const helpText = `👋 Привет! Я ищу ответы по вашим Tele
 ❌ /cancel — отменить текущее действие.
 
 После входа добавьте каналы и задайте вопрос текстом или голосом.`
+
+// guestHelpText is shown before login: only the entry commands are relevant.
+const guestHelpText = `👋 Привет! Я ищу ответы по вашим Telegram-каналам.
+
+Чтобы искать, мне нужен вход в ваш аккаунт: Telegram разрешает читать каналы только вам самим, поэтому я смотрю их от вашего имени. Нажмите «Войти» и отсканируйте QR-код.
+
+🔒 Приватность: бот не сохраняет пароль и личные данные. Пароль двухфакторной аутентификации удаляется сразу после ввода. Хранится только список каналов — его можно удалить командой /delete_me.
+
+Команды:
+🔑 /qrlogin — войти через QR-код.
+❌ /cancel — отменить текущее действие.
+ℹ️ /help — справка.`
 
 var welcomeMarkup = &telego.InlineKeyboardMarkup{
 	InlineKeyboard: [][]telego.InlineKeyboardButton{
