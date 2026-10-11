@@ -81,7 +81,7 @@ func (b *Bot) Run(ctx context.Context) error {
 func (b *Bot) registerCommands(ctx context.Context) error {
 	commands := []telego.BotCommand{
 		{Command: "qrlogin", Description: "вход через QR-код"},
-		{Command: "add_channel", Description: "добавить канал"},
+		{Command: "add_channels", Description: "добавить каналы"},
 		{Command: "remove_channel", Description: "убрать канал"},
 		{Command: "list_channels", Description: "показать каналы"},
 		{Command: "help", Description: "справка"},
@@ -126,7 +126,7 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 		b.reply(ctx, chatID, helpText)
 	case "/qrlogin":
 		b.startQRLogin(ctx, chatID)
-	case "/add_channel":
+	case "/add_channels":
 		b.addChannels(ctx, chatID, args)
 	case "/remove_channel":
 		b.removeChannels(ctx, chatID, args)
@@ -233,7 +233,7 @@ func (b *Bot) deleteMessage(ctx context.Context, chatID int64, messageID int) {
 
 func (b *Bot) addChannels(ctx context.Context, chatID int64, names []string) {
 	if len(names) == 0 {
-		b.reply(ctx, chatID, "Укажите каналы: /add_channel @channel1 @channel2")
+		b.reply(ctx, chatID, "Укажите каналы: /add_channels @channel1 @channel2")
 		return
 	}
 	var channels []store.Channel
@@ -270,7 +270,7 @@ func (b *Bot) listChannels(ctx context.Context, chatID int64) {
 		return
 	}
 	if len(channels) == 0 {
-		b.reply(ctx, chatID, "Каналы не заданы. Добавьте: /add_channel @channel1")
+		b.reply(ctx, chatID, "Каналы не заданы. Добавьте: /add_channels @channel1")
 		return
 	}
 	names := make([]string, 0, len(channels))
@@ -287,7 +287,7 @@ func (b *Bot) handleQuestion(ctx context.Context, chatID int64, question string)
 		return
 	}
 	if len(channels) == 0 {
-		b.reply(ctx, chatID, "Сначала добавьте каналы: /add_channel @channel1")
+		b.reply(ctx, chatID, "Сначала добавьте каналы: /add_channels @channel1")
 		return
 	}
 
@@ -421,7 +421,7 @@ const helpText = `Бот ищет ответы по вашим Telegram-кана
 
 Команды:
 /qrlogin — вход через QR-код (сканируете и подтверждаете на телефоне).
-/add_channel @ch1 — добавить канал.
+/add_channels @ch1 @ch2 — добавить каналы.
 /remove_channel @ch1 — убрать канал.
 /list_channels — показать каналы.
 
