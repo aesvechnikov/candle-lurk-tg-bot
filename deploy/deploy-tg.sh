@@ -9,7 +9,7 @@ SRC="${1:-/tmp/deploy}"
 DEST="/opt/tg-lurk-ai-bot"
 
 # Бинарники.
-for name in bot backend mcp stt; do
+for name in tg-lurk-ai-bot tg-lurk-ai-bot-backend tg-lurk-ai-bot-mcp tg-lurk-ai-bot-stt; do
   if [ -f "$SRC/$name" ]; then
     install -m 0755 -o lurk_ai_bot -g users "$SRC/$name" "$DEST/bin/$name"
     echo "installed $name"

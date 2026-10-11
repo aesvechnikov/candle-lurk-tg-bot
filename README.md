@@ -18,10 +18,10 @@ Telegram-бот, который отвечает на вопросы, ища и�
 
 | Бинарь | Роль |
 |---|---|
-| `bot` | Telegram-фронтенд: команды, QR-вход, распознавание голоса, вызов OpenCode, отправка ответа |
-| `backend` | MTProto-бэкенд: per-user сессии (зашифрованы AES-256-GCM), вход и поиск |
-| `mcp` | MCP-сервер (stdio), который OpenCode запускает как `tg-search` и который проксирует `search_tg` в backend |
-| `stt` | локальный speech-to-text (Vosk): принимает PCM и отдаёт распознанный текст |
+| `tg-lurk-ai-bot` | Telegram-фронтенд: команды, QR-вход, распознавание голоса, вызов OpenCode, отправка ответа |
+| `tg-lurk-ai-bot-backend` | MTProto-бэкенд: per-user сессии (зашифрованы AES-256-GCM), вход и поиск |
+| `tg-lurk-ai-bot-mcp` | MCP-сервер (stdio), который OpenCode запускает как `tg-search` и который проксирует `search_tg` в backend |
+| `tg-lurk-ai-bot-stt` | локальный speech-to-text (Vosk): принимает PCM и отдаёт распознанный текст |
 
 Каждый пользователь логинится **своим** Telegram-аккаунтом через QR-код (`/qrlogin`),
 поэтому бот ищет и в приватных каналах, к которым у пользователя есть доступ.
@@ -64,19 +64,19 @@ MTProto-сессии в SQLite не хранятся: это отдельные 
 
 Для голосовых вопросов (необязательно, только при `STT_ENABLED=true`):
 
-- Vosk-модель (`vosk-model-small-ru-0.22`), `libvosk.so` и бинарь `stt`;
+- Vosk-модель (`vosk-model-small-ru-0.22`), `libvosk.so` и бинарь `tg-lurk-ai-bot-stt`;
 - `ffmpeg`.
 
 ## Сборка
 
 ```bash
 go build ./...
-go build -o bin/bot     ./cmd/bot
-go build -o bin/backend ./cmd/backend
-go build -o bin/mcp     ./cmd/mcp
+go build -o bin/tg-lurk-ai-bot         ./cmd/bot
+go build -o bin/tg-lurk-ai-bot-backend ./cmd/backend
+go build -o bin/tg-lurk-ai-bot-mcp     ./cmd/mcp
 ```
 
-`stt` собирается отдельно (нужны cgo и Vosk) — см. «Голосовые вопросы».
+`tg-lurk-ai-bot-stt` собирается отдельно (нужны cgo и Vosk) — см. «Голосовые вопросы».
 
 ## Настройка
 
@@ -166,7 +166,7 @@ voice → скачать OGG → ffmpeg (PCM 16 кГц) → [stt: Vosk] → те
 - `STT_ENABLED=true` (+ `STT_ADDR`, `STT_MODEL_DIR`) в env;
 - модель `vosk-model-small-ru-0.22` в `STT_MODEL_DIR`;
 - `ffmpeg` и `libvosk.so`;
-- сервис `stt.service` (бинарь `stt` собирается отдельно с `-tags vosk` и cgo).
+- сервис `stt.service` (бинарь `tg-lurk-ai-bot-stt` собирается отдельно с `-tags vosk` и cgo).
 
 `deploy.sh` ставит всё это автоматически.
 

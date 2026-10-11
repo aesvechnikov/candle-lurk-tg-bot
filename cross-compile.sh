@@ -23,28 +23,29 @@ mkdir -p "$OUT_DIR"
 echo "==> building for ${TARGET_GOOS}/${TARGET_GOARCH} into ${OUT_DIR}/"
 
 build() {
-  local name="$1"
+  local src="$1"
+  local name="$2"
   GOOS="$TARGET_GOOS" GOARCH="$TARGET_GOARCH" CGO_ENABLED=0 GOFLAGS="-buildvcs=false" \
-    go build -o "$OUT_DIR/$name" "./cmd/$name"
+    go build -o "$OUT_DIR/$name" "./cmd/$src"
 }
 
-build bot
-build backend
-build mcp
+build bot tg-lurk-ai-bot
+build backend tg-lurk-ai-bot-backend
+build mcp tg-lurk-ai-bot-mcp
 
 echo "==> verifying architecture (must be ELF x86-64 / ELF aarch64):"
-file "$OUT_DIR"/bot "$OUT_DIR"/backend "$OUT_DIR"/mcp
+file "$OUT_DIR"/tg-lurk-ai-bot "$OUT_DIR"/tg-lurk-ai-bot-backend "$OUT_DIR"/tg-lurk-ai-bot-mcp
 
 cat <<EOF
 
 ==> Done. Upload ONLY these three files to the server:
 
-  scp ${OUT_DIR}/bot ${OUT_DIR}/backend ${OUT_DIR}/mcp user@SERVER:/tmp/
+  scp ${OUT_DIR}/tg-lurk-ai-bot ${OUT_DIR}/tg-lurk-ai-bot-backend ${OUT_DIR}/tg-lurk-ai-bot-mcp user@SERVER:/tmp/
 
 Then on the server:
 
-  sudo systemctl stop backend
-  sudo cp /tmp/bot /tmp/backend /tmp/mcp /opt/tg-lurk-ai-bot/bin/
-  sudo chmod +x /opt/tg-lurk-ai-bot/bin/bot /opt/tg-lurk-ai-bot/bin/backend /opt/tg-lurk-ai-bot/bin/mcp
+  sudo systemctl stop backend bot opencode-serve
+  sudo cp /tmp/tg-lurk-ai-bot /tmp/tg-lurk-ai-bot-backend /tmp/tg-lurk-ai-bot-mcp /opt/tg-lurk-ai-bot/bin/
+  sudo chmod +x /opt/tg-lurk-ai-bot/bin/tg-lurk-ai-bot /opt/tg-lurk-ai-bot/bin/tg-lurk-ai-bot-backend /opt/tg-lurk-ai-bot/bin/tg-lurk-ai-bot-mcp
   sudo SKIP_BUILD=1 bash deploy.sh
 EOF

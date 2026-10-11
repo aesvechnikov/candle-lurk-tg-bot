@@ -7,7 +7,7 @@ User=lurk_ai_bot
 Group=users
 EnvironmentFile=/etc/tg-lurk-ai-bot/env
 WorkingDirectory=/opt/tg-lurk-ai-bot
-ExecStart=/opt/tg-lurk-ai-bot/bin/bot
+ExecStart=/opt/tg-lurk-ai-bot/bin/tg-lurk-ai-bot
 Restart=always
 RestartSec=3
 

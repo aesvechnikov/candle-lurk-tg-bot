@@ -103,9 +103,9 @@ else
     # github.com/gotd/td/tg still needs >1.5GB — on a 2GB VDS prefer SKIP_BUILD
     # with binaries cross-compiled elsewhere, or add swap.
     export GOFLAGS="-buildvcs=false -p=1"
-    go build -o bin/bot     ./cmd/bot
-    go build -o bin/backend ./cmd/backend
-    go build -o bin/mcp     ./cmd/mcp
+    go build -o bin/tg-lurk-ai-bot         ./cmd/bot
+    go build -o bin/tg-lurk-ai-bot-backend ./cmd/backend
+    go build -o bin/tg-lurk-ai-bot-mcp     ./cmd/mcp
   )
 fi
 mkdir -p "$INSTALL_DIR/data"
@@ -154,7 +154,7 @@ chown -R "$SERVICE_USER":"$SERVICE_USER" "${INSTALL_DIR}/models"
 
 # Build the stt binary (cgo + Vosk). Skipped with SKIP_BUILD=1.
 if [ "${SKIP_BUILD:-0}" = "1" ]; then
-  log "skipping stt build (SKIP_BUILD=1): using pre-built bin/stt"
+  log "skipping stt build (SKIP_BUILD=1): using pre-built bin/tg-lurk-ai-bot-stt"
 else
   if ! command -v gcc >/dev/null 2>&1; then
     log "installing build tools (gcc) for cgo"
@@ -168,7 +168,7 @@ else
     export GOTOOLCHAIN=auto
     export GOFLAGS="-buildvcs=false -p=1"
     CGO_ENABLED=1 CGO_CFLAGS="-I${VOSK_DIR}" CGO_LDFLAGS="-L${VOSK_DIR} -lvosk -ldl -lpthread" \
-      go build -tags vosk -o bin/stt ./cmd/stt
+      go build -tags vosk -o bin/tg-lurk-ai-bot-stt ./cmd/stt
   )
 fi
 

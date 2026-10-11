@@ -15,7 +15,7 @@
 ## Работа с кодом
 
 - Go-проект, стек: gotd (MTProto), telego (Telegram Bot API), mcp-go, SQLite, vosk (STT).
-- Бинарники `bot`, `backend`, `mcp` + `stt` (STT-сервис, собирается отдельно с `-tags vosk` и cgo)
+- Бинарники `tg-lurk-ai-bot`, `tg-lurk-ai-bot-backend`, `tg-lurk-ai-bot-mcp` + `tg-lurk-ai-bot-stt` (STT-сервис, собирается отдельно с `-tags vosk` и cgo)
   и headless `opencode serve` с агентом `answer`.
 - `stt` компилируется только с `-tags vosk` (нужны libvosk + cgo); обычный `go build ./...` его пропускает.
 - Сборка: `go build ./...`. Линк/проверка: `go vet ./...`. Тесты: `go test ./...`.
