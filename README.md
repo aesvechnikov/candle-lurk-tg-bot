@@ -10,33 +10,9 @@ Telegram-бот, который отвечает на вопросы, ища и�
 
 ## Архитектура
 
-```plantuml
-@startuml
-actor Пользователь
-participant "bot (telego)" as Bot
-participant "opencode serve" as OC
-participant "mcp (mcp-go)" as MCP
-participant "backend (gotd)" as Backend
-database "Telegram" as TG
+![Цепочка вызовов](docs/architecture.png)
 
-Пользователь -> Bot: вопрос
-Bot -> OC: POST /session + /message (agent=answer)
-activate OC
-OC -> MCP: search_tg(user_id, channels, query)
-activate MCP
-MCP -> Backend: POST /search
-activate Backend
-Backend -> TG: messages.search
-TG --> Backend: сообщения
-Backend --> MCP: результаты + ссылки t.me
-deactivate Backend
-MCP --> OC: результаты (JSON)
-deactivate MCP
-OC --> Bot: текст ответа
-deactivate OC
-Bot --> Пользователь: ответ (Markdown → HTML)
-@enduml
-```
+> Исходник диаграммы — `docs/architecture.puml` (PlantUML).
 
 Три процесса:
 
