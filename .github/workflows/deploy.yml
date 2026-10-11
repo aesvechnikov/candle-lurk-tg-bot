@@ -26,7 +26,7 @@ jobs:
           go build -o dist/backend ./cmd/backend
           go build -o dist/mcp     ./cmd/mcp
 
-      - name: Copy binaries to server
+      - name: Copy files to server
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -36,7 +36,10 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/deploy_key \
-            dist/bot dist/backend dist/mcp \
+            dist/bot dist/backend dist/mcp opencode.json AGENTS.md \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/deploy/"
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/deploy_key -r \
+            .opencode \
             "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/deploy/"
 
       - name: Install and restart services
