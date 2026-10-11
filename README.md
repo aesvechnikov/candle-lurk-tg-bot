@@ -10,7 +10,7 @@ Telegram-бот, который отвечает на вопросы, ища и�
 
 ## Архитектура
 
-![Цепочка вызовов](docs/architecture.png)
+![Цепочка вызовов](docs/call-flow.png)
 
 > Исходник диаграммы — `docs/architecture.puml` (PlantUML).
 
