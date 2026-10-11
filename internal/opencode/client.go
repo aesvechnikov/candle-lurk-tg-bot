@@ -76,7 +76,9 @@ func (c *Client) sendMessage(ctx context.Context, sessID, agent, model, prompt s
 		},
 	}
 	if model != "" {
-		body["model"] = model
+		if provider, modelID, ok := strings.Cut(model, "/"); ok {
+			body["model"] = map[string]string{"providerID": provider, "modelID": modelID}
+		}
 	}
 
 	var out messageResp
