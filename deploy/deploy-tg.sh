@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Устанавливает собранные бинарники и синхронизирует конфиг/скиллы,
-# затем перезапускает сервисы candle-lurk-tg-bot.
+# затем перезапускает сервисы tg-lurk-ai-bot.
 # Запускается от root через sudo пользователем deploy.
 # Аргумент: каталог со staged-файлами (по умолчанию /tmp/deploy).
 set -euo pipefail
 
 SRC="${1:-/tmp/deploy}"
-DEST="/opt/candle-lurk-tg-bot"
+DEST="/opt/tg-lurk-ai-bot"
 
 # Бинарники.
 for name in bot backend mcp; do

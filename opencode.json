@@ -7,7 +7,7 @@
   "mcp": {
     "tg-search": {
       "type": "local",
-      "command": ["/opt/candle-lurk-tg-bot/bin/mcp"],
+      "command": ["/opt/tg-lurk-ai-bot/bin/mcp"],
       "environment": {
         "BACKEND_ADDR": "127.0.0.1:9090"
       },

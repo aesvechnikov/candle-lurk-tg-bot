@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/backend"
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/config"
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/tg"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/backend"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/config"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/tg"
 )
 
 func main() {

@@ -1,12 +1,12 @@
 [Unit]
-Description=candle-lurk-tg-bot opencode serve (agent + MCP)
+Description=tg-lurk-ai-bot opencode serve (agent + MCP)
 After=network.target
 
 [Service]
 User=lurk_ai_bot
 Group=users
-EnvironmentFile=/etc/candle-lurk-tg-bot/env
-WorkingDirectory=/opt/candle-lurk-tg-bot
+EnvironmentFile=/etc/tg-lurk-ai-bot/env
+WorkingDirectory=/opt/tg-lurk-ai-bot
 ExecStart=/usr/local/bin/opencode serve --hostname 127.0.0.1 --port 4096
 Restart=always
 RestartSec=3

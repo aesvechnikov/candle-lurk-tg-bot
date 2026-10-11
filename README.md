@@ -1,4 +1,4 @@
-# candle-lurk-tg-bot
+# tg-lurk-ai-bot
 
 Telegram-бот, который отвечает на вопросы, ища информацию в ваших Telegram-каналах,
 и присылает краткий ответ со ссылками на источники.
@@ -86,8 +86,8 @@ go build -o bin/mcp ./cmd/mcp
 ```bash
 scp dist/bot dist/backend dist/mcp user@IP:/tmp/
 ssh user@IP
-sudo mkdir -p /opt/candle-lurk-tg-bot/bin
-sudo cp /tmp/bot /tmp/backend /tmp/mcp /opt/candle-lurk-tg-bot/bin/
+sudo mkdir -p /opt/tg-lurk-ai-bot/bin
+sudo cp /tmp/bot /tmp/backend /tmp/mcp /opt/tg-lurk-ai-bot/bin/
 sudo SKIP_BUILD=1 bash deploy.sh
 ```
 
@@ -96,15 +96,15 @@ sudo SKIP_BUILD=1 bash deploy.sh
 ## Настройка
 
 Скопируйте `.env.example` в env-файл (см. `deploy/*.service`, по умолчанию
-`/etc/candle-lurk-tg-bot/env`) и заполните значения. Ключ шифрования сессий:
+`/etc/tg-lurk-ai-bot/env`) и заполните значения. Ключ шифрования сессий:
 
 ```bash
 openssl rand -hex 32
 ```
 
 OpenCode должен видеть `opencode.json` и `.opencode/` из рабочей директории
-`opencode serve` — в юнитах это `/opt/candle-lurk-tg-bot`. Путь до MCP-бинаря в
-`opencode.json` (`/opt/candle-lurk-tg-bot/bin/mcp`) поправьте под свой деплой.
+`opencode serve` — в юнитах это `/opt/tg-lurk-ai-bot`. Путь до MCP-бинаря в
+`opencode.json` (`/opt/tg-lurk-ai-bot/bin/mcp`) поправьте под свой деплой.
 
 `opencode serve` требует пароль: `OPENCODE_SERVER_PASSWORD` (в `EnvironmentFile`),
 а DeepSeek-ключ передаётся стандартно (`/connect` или `DEEPSEEK_API_KEY`).
@@ -131,12 +131,12 @@ sudo bash deploy.sh
 ```
 
 Первый запуск останавливается после создания env-файла — заполните его
-(`/etc/candle-lurk-tg-bot/env`) и запустите скрипт ещё раз.
+(`/etc/tg-lurk-ai-bot/env`) и запустите скрипт ещё раз.
 
 Переменные `deploy.sh`:
 
 - `SKIP_BUILD=1` — не собирать бинарники, использовать уже лежащие в
-  `/opt/candle-lurk-tg-bot/bin/`. Нужен на VDS с 2 ГБ, где сборка gotd падает по
+  `/opt/tg-lurk-ai-bot/bin/`. Нужен на VDS с 2 ГБ, где сборка gotd падает по
   памяти (см. «Низкая память»).
 - `GO_VERSION=1.26.2` — версия Go для установки.
 
@@ -151,14 +151,14 @@ sudo systemctl enable --now backend.service opencode-serve.service bot.service
 Все порты слушают только `127.0.0.1` — наружу ничего не открывается.
 
 Сервисы работают от системного пользователя `lurk_ai_bot` в группе `users`;
-каталог бота — `/opt/candle-lurk-tg-bot`, env-файл — `/etc/candle-lurk-tg-bot/env`.
+каталог бота — `/opt/tg-lurk-ai-bot`, env-файл — `/etc/tg-lurk-ai-bot/env`.
 
 ## CI/CD (GitHub Actions)
 
 `.github/workflows/deploy.yml` на каждый push в `main`:
 собирает бинарники на ubuntu-латере (`GOOS=linux GOARCH=amd64`), копирует их вместе с
 `.opencode/` и `opencode.json` на сервер под пользователем `deploy`, затем выполняет
-`sudo /usr/local/bin/deploy-candle` (установка + перезапуск сервисов).
+`sudo /usr/local/bin/deploy-tg` (установка + перезапуск сервисов).
 
 Секреты репозитория: `DEPLOY_SSH_KEY` (приватный ключ), `DEPLOY_HOST`, `DEPLOY_USER`.
 

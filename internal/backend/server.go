@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/tg"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/tg"
 )
 
 // Server exposes the MTProto backend over local HTTP. It is dialed by both

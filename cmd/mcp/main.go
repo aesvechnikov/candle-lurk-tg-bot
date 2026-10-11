@@ -10,7 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/backend"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/backend"
 )
 
 func main() {

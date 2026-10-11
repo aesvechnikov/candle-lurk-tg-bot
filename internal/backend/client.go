@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/tg"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/tg"
 )
 
 // Client is an HTTP client for the local backend, shared by the bot and the

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Cross-compile the three candle-lurk-tg-bot binaries for the target server.
+# Cross-compile the three tg-lurk-ai-bot binaries for the target server.
 # Run this on a machine with enough RAM (e.g. your Mac) — compiling
 # github.com/gotd/td/tg needs >2GB, which a 2GB VDS may not have.
 #
@@ -44,7 +44,7 @@ cat <<EOF
 Then on the server:
 
   sudo systemctl stop backend
-  sudo cp /tmp/bot /tmp/backend /tmp/mcp /opt/candle-lurk-tg-bot/bin/
-  sudo chmod +x /opt/candle-lurk-tg-bot/bin/bot /opt/candle-lurk-tg-bot/bin/backend /opt/candle-lurk-tg-bot/bin/mcp
+  sudo cp /tmp/bot /tmp/backend /tmp/mcp /opt/tg-lurk-ai-bot/bin/
+  sudo chmod +x /opt/tg-lurk-ai-bot/bin/bot /opt/tg-lurk-ai-bot/bin/backend /opt/tg-lurk-ai-bot/bin/mcp
   sudo SKIP_BUILD=1 bash deploy.sh
 EOF

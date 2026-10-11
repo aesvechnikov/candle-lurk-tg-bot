@@ -12,9 +12,9 @@ import (
 
 	"github.com/mymmrac/telego"
 
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/backend"
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/opencode"
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/store"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/backend"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/opencode"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/store"
 )
 
 const (

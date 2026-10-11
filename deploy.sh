@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Deploy script for candle-lurk-tg-bot.
+# Deploy script for tg-lurk-ai-bot.
 # Run on the VDS as root (or with sudo). Idempotent — safe to re-run.
 #
 #   sudo bash deploy.sh
@@ -11,12 +11,12 @@
 
 set -euo pipefail
 
-REPO_URL="https://github.com/aesvechnikov/candle-lurk-tg-bot.git"
-INSTALL_DIR="/opt/candle-lurk-tg-bot"
+REPO_URL="https://github.com/aesvechnikov/tg-lurk-ai-bot.git"
+INSTALL_DIR="/opt/tg-lurk-ai-bot"
 SERVICE_GROUP="users"
 SERVICE_USER="lurk_ai_bot"
 SERVICE_HOME="/home/lurk_ai_bot"
-ENV_FILE="/etc/candle-lurk-tg-bot/env"
+ENV_FILE="/etc/tg-lurk-ai-bot/env"
 GO_VERSION="${GO_VERSION:-1.26.2}"
 
 log()  { printf '==> %s\n' "$*"; }

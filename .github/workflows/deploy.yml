@@ -54,4 +54,4 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/deploy_key \
-            "${DEPLOY_USER}@${DEPLOY_HOST}" "sudo /usr/local/bin/deploy-candle /tmp/deploy"
+            "${DEPLOY_USER}@${DEPLOY_HOST}" "sudo /usr/local/bin/deploy-tg /tmp/deploy"

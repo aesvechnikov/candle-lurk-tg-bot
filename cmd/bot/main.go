@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/backend"
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/bot"
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/config"
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/opencode"
-	"github.com/aesvechnikov/candle-lurk-tg-bot/internal/store"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/backend"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/bot"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/config"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/opencode"
+	"github.com/aesvechnikov/tg-lurk-ai-bot/internal/store"
 )
 
 func main() {

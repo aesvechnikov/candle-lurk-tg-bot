@@ -1,4 +1,4 @@
-module github.com/aesvechnikov/candle-lurk-tg-bot
+module github.com/aesvechnikov/tg-lurk-ai-bot
 
 go 1.26.2
 
