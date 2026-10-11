@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth/qrlogin"
@@ -179,6 +180,7 @@ func (m *Manager) Search(
 		}
 
 		api := client.API()
+		minDate := searchMinDate()
 		for _, raw := range channels {
 			username := cleanUsername(raw)
 			peer, linkUsername := resolveChannel(ctx, api, username)
@@ -186,10 +188,11 @@ func (m *Manager) Search(
 				continue
 			}
 			resp, err := api.MessagesSearch(ctx, &tg.MessagesSearchRequest{
-				Peer:   peer,
-				Q:      query,
-				Filter: &tg.InputMessagesFilterEmpty{},
-				Limit:  limit,
+				Peer:    peer,
+				Q:       query,
+				Filter:  &tg.InputMessagesFilterEmpty{},
+				MinDate: minDate,
+				Limit:   limit,
 			})
 			if err != nil {
 				continue
@@ -215,6 +218,13 @@ func (m *Manager) Search(
 
 func cleanUsername(raw string) string {
 	return strings.TrimPrefix(strings.TrimSpace(raw), "@")
+}
+
+// searchMinDate returns the earliest message date channel search considers.
+// It bounds how much history the model can pull, keeping results and token
+// usage reasonable.
+func searchMinDate() int {
+	return int(time.Now().AddDate(0, -3, 0).Unix())
 }
 
 // ChannelInfo returns the title and description (about) of a channel, using
