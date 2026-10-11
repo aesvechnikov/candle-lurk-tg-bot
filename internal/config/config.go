@@ -53,7 +53,7 @@ func Load() (Config, error) {
 		// OPENCODE_SERVER_PASSWORD as a fallback so a single variable works
 		// for both the bot and the server.
 		OpenCodePassword: getenv("OPENCODE_PASSWORD", os.Getenv("OPENCODE_SERVER_PASSWORD")),
-		OpenCodeModel:    getenv("OPENCODE_MODEL", "deepseek/deepseek-v4-pro"),
+		OpenCodeModel:    getenv("OPENCODE_MODEL", "deepseek/deepseek-flash"),
 		DataDir:          getenv("DATA_DIR", "./data"),
 		BackendAddr:      getenv("BACKEND_ADDR", "127.0.0.1:9090"),
 		AllowedUsers:     splitList(os.Getenv("ALLOWED_USERS")),

@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "deepseek/deepseek-v4-pro",
+  "model": "deepseek/deepseek-flash",
   "permission": {
     "skill": { "*": "allow" }
   },
