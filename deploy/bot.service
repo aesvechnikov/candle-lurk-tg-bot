@@ -4,7 +4,7 @@ After=network.target backend.service opencode-serve.service
 
 [Service]
 User=lurk_ai_bot
-Group=lurk
+Group=users
 EnvironmentFile=/etc/candle-lurk-tg-bot/env
 WorkingDirectory=/opt/candle-lurk-tg-bot
 ExecStart=/opt/candle-lurk-tg-bot/bin/bot

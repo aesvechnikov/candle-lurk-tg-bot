@@ -13,7 +13,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/aesvechnikov/candle-lurk-tg-bot.git"
 INSTALL_DIR="/opt/candle-lurk-tg-bot"
-SERVICE_GROUP="lurk"
+SERVICE_GROUP="users"
 SERVICE_USER="lurk_ai_bot"
 SERVICE_HOME="/home/lurk_ai_bot"
 ENV_FILE="/etc/candle-lurk-tg-bot/env"
