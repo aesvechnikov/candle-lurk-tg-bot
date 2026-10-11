@@ -94,15 +94,45 @@ func (b *Bot) Run(ctx context.Context) error {
 
 // registerCommands publishes the command list so Telegram shows suggestions
 // when the user types "/".
+// guestCommands is the default command list, shown before login. Channel
+// management commands are added later via a per-chat scope once the user is
+// logged in.
+var guestCommands = []telego.BotCommand{
+	{Command: "qrlogin", Description: "вход через QR-код"},
+	{Command: "cancel", Description: "отменить текущее действие"},
+	{Command: "help", Description: "справка"},
+}
+
+// fullCommands is the command list for a logged-in chat.
+var fullCommands = []telego.BotCommand{
+	{Command: "qrlogin", Description: "вход через QR-код"},
+	{Command: "add_channels", Description: "добавить каналы"},
+	{Command: "remove_channels", Description: "убрать каналы"},
+	{Command: "list_channels", Description: "показать каналы"},
+	{Command: "delete_me", Description: "удалить аккаунт и все данные"},
+	{Command: "cancel", Description: "отменить текущее действие"},
+	{Command: "help", Description: "справка"},
+}
+
 func (b *Bot) registerCommands(ctx context.Context) error {
-	commands := []telego.BotCommand{
-		{Command: "qrlogin", Description: "вход через QR-код"},
-		{Command: "remove_channels", Description: "убрать каналы"},
-		{Command: "delete_me", Description: "удалить аккаунт и все данные"},
-		{Command: "cancel", Description: "отменить текущее действие"},
-		{Command: "help", Description: "справка"},
-	}
-	return b.tele.SetMyCommands(ctx, &telego.SetMyCommandsParams{Commands: commands})
+	return b.tele.SetMyCommands(ctx, &telego.SetMyCommandsParams{Commands: guestCommands})
+}
+
+func chatScope(chatID int64) *telego.BotCommandScopeChat {
+	return &telego.BotCommandScopeChat{Type: telego.ScopeTypeChat, ChatID: telego.ChatID{ID: chatID}}
+}
+
+// setFullCommands switches a chat to the logged-in command list.
+func (b *Bot) setFullCommands(ctx context.Context, chatID int64) {
+	_ = b.tele.SetMyCommands(ctx, &telego.SetMyCommandsParams{
+		Commands: fullCommands,
+		Scope:    chatScope(chatID),
+	})
+}
+
+// resetCommands removes the per-chat override so the guest list applies again.
+func (b *Bot) resetCommands(ctx context.Context, chatID int64) {
+	_ = b.tele.DeleteMyCommands(ctx, &telego.DeleteMyCommandsParams{Scope: chatScope(chatID)})
 }
 
 func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
@@ -236,6 +266,7 @@ func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
 		}
 		switch status {
 		case "done":
+			b.setFullCommands(ctx, chatID)
 			b.reply(ctx, chatID, "Готово, вход выполнен.")
 			return
 		case "password":
@@ -302,6 +333,7 @@ func (b *Bot) handleQRPassword(ctx context.Context, chatID int64, password strin
 		return
 	}
 	if status == "done" {
+		b.setFullCommands(ctx, chatID)
 		b.reply(ctx, chatID, "Готово, вход выполнен.")
 	}
 }
@@ -377,6 +409,7 @@ func (b *Bot) deleteMe(ctx context.Context, chatID int64) {
 		b.reply(ctx, chatID, "Каналы удалены, но не удалось удалить сессию: "+err.Error())
 		return
 	}
+	b.resetCommands(ctx, chatID)
 	b.reply(ctx, chatID, "Готово. Вход и все данные удалены. Напишите /start, чтобы начать заново.")
 }
 
