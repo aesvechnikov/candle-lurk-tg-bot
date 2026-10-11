@@ -184,6 +184,51 @@ func cleanUsername(raw string) string {
 	return strings.TrimPrefix(strings.TrimSpace(raw), "@")
 }
 
+// ChannelInfo returns the title and description (about) of a channel, using
+// the user's own session. The description may be empty.
+func (m *Manager) ChannelInfo(ctx context.Context, userID int64, username string) (title, about string, err error) {
+	client, err := m.newClient(userID)
+	if err != nil {
+		return "", "", err
+	}
+	err = client.Run(ctx, func(ctx context.Context) error {
+		status, err := client.Auth().Status(ctx)
+		if err != nil {
+			return fmt.Errorf("auth status: %w", err)
+		}
+		if !status.Authorized {
+			return fmt.Errorf("user %d is not authorized, run /qrlogin first", userID)
+		}
+		title, about, err = channelInfo(ctx, client.API(), cleanUsername(username))
+		return err
+	})
+	return title, about, err
+}
+
+// channelInfo resolves a username and fetches its title and description.
+func channelInfo(ctx context.Context, api *tg.Client, username string) (title, about string, err error) {
+	resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{Username: username})
+	if err != nil {
+		return "", "", err
+	}
+	for _, chat := range resolved.Chats {
+		ch, ok := chat.(*tg.Channel)
+		if !ok {
+			continue
+		}
+		title = ch.Title
+		full, err := api.ChannelsGetFullChannel(ctx, &tg.InputChannel{ChannelID: ch.ID, AccessHash: ch.AccessHash})
+		if err != nil {
+			return title, "", nil
+		}
+		if cf, ok := full.FullChat.(*tg.ChannelFull); ok {
+			about = cf.About
+		}
+		return title, about, nil
+	}
+	return "", "", fmt.Errorf("channel %q not found", username)
+}
+
 // resolveChannel resolves a username to an InputPeerChannel and returns the
 // channel's public username (for building t.me links).
 func resolveChannel(ctx context.Context, api *tg.Client, username string) (tg.InputPeerClass, string) {

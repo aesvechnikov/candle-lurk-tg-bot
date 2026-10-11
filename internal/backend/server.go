@@ -45,6 +45,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/qrlogin/start", s.handleQRStart)
 	mux.HandleFunc("/qrlogin/poll", s.handleQRPoll)
 	mux.HandleFunc("/qrlogin/password", s.handleQRPassword)
+	mux.HandleFunc("/channel_info", s.handleChannelInfo)
 	mux.HandleFunc("/search", s.handleSearch)
 	return mux
 }
@@ -194,6 +195,26 @@ func (s *Server) cleanupQR(userID int64) {
 		delete(s.qrPending, userID)
 	}
 	s.mu.Unlock()
+}
+
+func (s *Server) handleChannelInfo(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID  int64  `json:"user_id"`
+		Channel string `json:"channel"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Channel == "" {
+		writeError(w, http.StatusBadRequest, "channel is required")
+		return
+	}
+	title, about, err := s.mgr.ChannelInfo(r.Context(), req.UserID, req.Channel)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"title": title, "about": about})
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {

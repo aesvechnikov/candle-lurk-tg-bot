@@ -7,9 +7,15 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Store is a thin SQLite-backed persistence layer for users and their
-// saved channel lists. MTProto sessions are stored separately as encrypted
-// files by the backend.
+// Channel is a saved channel with optional Telegram metadata (title/description).
+type Channel struct {
+	Name  string
+	Title string
+	About string
+}
+
+// Store is a thin SQLite-backed persistence layer for saved channel lists.
+// MTProto sessions are stored separately as encrypted files by the backend.
 type Store struct {
 	db *sql.DB
 }
@@ -32,29 +38,84 @@ CREATE TABLE IF NOT EXISTS channels (
 	user_id  INTEGER NOT NULL,
 	channel  TEXT NOT NULL,
 	added_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+	title    TEXT NOT NULL DEFAULT '',
+	about    TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (user_id, channel)
 );
 `
-	_, err := db.Exec(schema)
-	return err
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+	return ensureColumns(db)
+}
+
+// ensureColumns adds title/about to databases created before those columns
+// existed (SQLite has no "ADD COLUMN IF NOT EXISTS").
+func ensureColumns(db *sql.DB) error {
+	cols, err := existingColumns(db, "channels")
+	if err != nil {
+		return err
+	}
+	has := func(name string) bool {
+		for _, c := range cols {
+			if c == name {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("title") {
+		if _, err := db.Exec(`ALTER TABLE channels ADD COLUMN title TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if !has("about") {
+		if _, err := db.Exec(`ALTER TABLE channels ADD COLUMN about TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func existingColumns(db *sql.DB, table string) ([]string, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var (
+			cid         int
+			name, typ   string
+			notnull, pk int
+			dflt        sql.NullString
+		)
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return nil, err
+		}
+		cols = append(cols, name)
+	}
+	return cols, rows.Err()
 }
 
 func (s *Store) Close() error { return s.db.Close() }
 
 // ListChannels returns the saved channels for a user in insertion order.
-func (s *Store) ListChannels(userID int64) ([]string, error) {
+func (s *Store) ListChannels(userID int64) ([]Channel, error) {
 	rows, err := s.db.Query(
-		`SELECT channel FROM channels WHERE user_id = ? ORDER BY added_at, rowid`, userID,
+		`SELECT channel, title, about FROM channels WHERE user_id = ? ORDER BY added_at, rowid`, userID,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []string
+	var out []Channel
 	for rows.Next() {
-		var c string
-		if err := rows.Scan(&c); err != nil {
+		var c Channel
+		if err := rows.Scan(&c.Name, &c.Title, &c.About); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -62,11 +123,14 @@ func (s *Store) ListChannels(userID int64) ([]string, error) {
 	return out, rows.Err()
 }
 
-// AddChannels appends channels to a user's saved list (deduplicated).
-func (s *Store) AddChannels(userID int64, channels []string) error {
+// AddChannels appends channels (with optional metadata) to a user's list,
+// refreshing title/about for channels that already exist.
+func (s *Store) AddChannels(userID int64, channels []Channel) error {
 	for _, c := range channels {
 		if _, err := s.db.Exec(
-			`INSERT OR IGNORE INTO channels (user_id, channel) VALUES (?, ?)`, userID, c,
+			`INSERT INTO channels (user_id, channel, title, about) VALUES (?, ?, ?, ?)
+			 ON CONFLICT(user_id, channel) DO UPDATE SET title = excluded.title, about = excluded.about`,
+			userID, c.Name, c.Title, c.About,
 		); err != nil {
 			return err
 		}

@@ -231,10 +231,19 @@ func (b *Bot) deleteMessage(ctx context.Context, chatID int64, messageID int) {
 	})
 }
 
-func (b *Bot) addChannels(ctx context.Context, chatID int64, channels []string) {
-	if len(channels) == 0 {
+func (b *Bot) addChannels(ctx context.Context, chatID int64, names []string) {
+	if len(names) == 0 {
 		b.reply(ctx, chatID, "Укажите каналы: /add_channel @channel1 @channel2")
 		return
+	}
+	var channels []store.Channel
+	for _, name := range names {
+		c := store.Channel{Name: name}
+		if title, about, err := b.backend.ChannelInfo(ctx, chatID, name); err == nil {
+			c.Title = title
+			c.About = about
+		}
+		channels = append(channels, c)
 	}
 	if err := b.store.AddChannels(chatID, channels); err != nil {
 		b.reply(ctx, chatID, "Ошибка: "+err.Error())
@@ -264,7 +273,11 @@ func (b *Bot) listChannels(ctx context.Context, chatID int64) {
 		b.reply(ctx, chatID, "Каналы не заданы. Добавьте: /add_channel @channel1")
 		return
 	}
-	b.reply(ctx, chatID, "Каналы:\n"+strings.Join(channels, "\n"))
+	names := make([]string, 0, len(channels))
+	for _, c := range channels {
+		names = append(names, c.Name)
+	}
+	b.reply(ctx, chatID, "Каналы:\n"+strings.Join(names, "\n"))
 }
 
 func (b *Bot) handleQuestion(ctx context.Context, chatID int64, question string) {
@@ -360,21 +373,29 @@ func (b *Bot) clearAwaitingPassword(chatID int64) {
 	delete(b.logins, chatID)
 }
 
-func buildPrompt(chatID int64, channels []string, question string) string {
-	return fmt.Sprintf(`Ты — помощник, который отвечает на вопросы, находя информацию в Telegram-каналах пользователя.
-
-Твой user_id: %d
-Каналы, в которых нужно искать: %s
-
-Вопрос пользователя: %s
-
-Действуй по шагам:
-1. Выдели из вопроса 1–2 конкретных поисковых запроса (отдельные слова или короткие фразы).
-2. Для каждого запроса вызови инструмент search_tg, передав user_id=%d, channels и query.
-3. Собери короткий ответ на русском, по существу, с ссылками на источники (поле link в результатах).
-
-Требования к ответу: кратко, на русском, без выдумок; если результатов нет — так и скажи. Ссылки приводи только те, что реально есть в результатах.`,
-		chatID, strings.Join(channels, ", "), question, chatID)
+func buildPrompt(chatID int64, channels []store.Channel, question string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Ты — помощник, который отвечает на вопросы, находя информацию в Telegram-каналах пользователя.\n\n")
+	fmt.Fprintf(&b, "Твой user_id: %d\n", chatID)
+	b.WriteString("Каналы (с описаниями):\n")
+	for _, c := range channels {
+		desc := strings.TrimSpace(c.About)
+		if desc == "" {
+			desc = strings.TrimSpace(c.Title)
+		}
+		if desc == "" {
+			desc = "(без описания)"
+		}
+		fmt.Fprintf(&b, "- %s — %s\n", c.Name, desc)
+	}
+	fmt.Fprintf(&b, "\nВопрос пользователя: %s\n\n", question)
+	b.WriteString("Действуй по шагам:\n")
+	b.WriteString("1. Выдели из вопроса 1–2 конкретных поисковых запроса.\n")
+	b.WriteString("2. Выбери 1–4 канала, которые с наибольшей вероятностью содержат ответ (см. скилл select-channels), и ищи только в них.\n")
+	fmt.Fprintf(&b, "3. Для каждого запроса вызови инструмент search_tg, передав user_id=%d, channels=[выбранные каналы] и query=запрос.\n", chatID)
+	b.WriteString("4. Собери короткий ответ на русском со ссылками на источники (поле link в результатах).\n\n")
+	b.WriteString("Требования к ответу: кратко, на русском, без выдумок; если результатов нет — так и скажи. Ссылки приводи только те, что реально есть в результатах.\n")
+	return b.String()
 }
 
 func splitMessage(text string, limit int) []string {

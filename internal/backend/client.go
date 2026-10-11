@@ -68,6 +68,18 @@ func (c *Client) QRLoginPassword(ctx context.Context, userID int64, password str
 	return resp.Status, nil
 }
 
+// ChannelInfo returns the title and description of a channel.
+func (c *Client) ChannelInfo(ctx context.Context, userID int64, channel string) (title, about string, err error) {
+	var resp struct {
+		Title string `json:"title"`
+		About string `json:"about"`
+	}
+	if err := c.post(ctx, "/channel_info", map[string]any{"user_id": userID, "channel": channel}, &resp); err != nil {
+		return "", "", err
+	}
+	return resp.Title, resp.About, nil
+}
+
 // Search queries the backend for messages matching query in channels.
 func (c *Client) Search(ctx context.Context, userID int64, channels []string, query string, limit int) ([]tg.Result, error) {
 	var results []tg.Result
