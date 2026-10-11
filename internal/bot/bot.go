@@ -100,6 +100,7 @@ func (b *Bot) registerCommands(ctx context.Context) error {
 		{Command: "add_channels", Description: "добавить каналы"},
 		{Command: "remove_channels", Description: "убрать каналы"},
 		{Command: "list_channels", Description: "показать каналы"},
+		{Command: "delete_me", Description: "удалить аккаунт и все данные"},
 		{Command: "cancel", Description: "отменить вход"},
 		{Command: "help", Description: "справка"},
 	}
@@ -176,6 +177,8 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 		b.reply(ctx, chatID, b.removePrompt(chatID))
 	case "/list_channels":
 		b.listChannels(ctx, chatID)
+	case "/delete_me":
+		b.deleteMe(ctx, chatID)
 	default:
 		b.reply(ctx, chatID, "Неизвестная команда. /help — список команд.")
 	}
@@ -369,6 +372,24 @@ func (b *Bot) listChannels(ctx context.Context, chatID int64) {
 		}
 	}
 	b.reply(ctx, chatID, "Каналы:\n"+strings.Join(lines, "\n"))
+}
+
+// deleteMe removes the user's session and saved channels, effectively
+// disconnecting the bot from the user's account.
+func (b *Bot) deleteMe(ctx context.Context, chatID int64) {
+	b.clearAwaitingPassword(chatID)
+	b.clearAwaitingAdd(chatID)
+	b.clearAwaitingRemove(chatID)
+
+	if err := b.store.DeleteUser(chatID); err != nil {
+		b.reply(ctx, chatID, "Не удалось удалить данные: "+err.Error())
+		return
+	}
+	if err := b.backend.DeleteUser(ctx, chatID); err != nil {
+		b.reply(ctx, chatID, "Каналы удалены, но не удалось удалить сессию: "+err.Error())
+		return
+	}
+	b.reply(ctx, chatID, "Готово. Вход и все данные удалены. Напишите /start, чтобы начать заново.")
 }
 
 func (b *Bot) handleQuestion(ctx context.Context, chatID int64, question string) {
@@ -663,16 +684,19 @@ func splitMessage(text string, limit int) []string {
 
 const helpText = `👋 Привет! Я ищу ответы по вашим Telegram-каналам.
 
+Чтобы искать, мне нужен вход в ваш аккаунт: Telegram разрешает читать каналы только вам самим, поэтому я смотрю их от вашего имени. Нажмите «Войти» и отсканируйте QR-код.
+
+🔒 Приватность: бот не сохраняет пароль и личные данные. Пароль двухфакторной аутентификации удаляется сразу после ввода. Хранится только список каналов — его можно удалить командой /delete_me.
+
 Команды:
 🔑 /qrlogin — войти через QR-код.
 ➕ /add_channels — добавить каналы.
 ➖ /remove_channels — убрать каналы.
 📋 /list_channels — мои каналы.
+🗑 /delete_me — удалить аккаунт и все данные.
 ❌ /cancel — отменить вход.
 
-Сначала войдите через /qrlogin, затем добавьте каналы и задайте вопрос текстом или голосом.
-
-🔒 Бот не сохраняет пароли и персональные данные.`
+После входа добавьте каналы и задайте вопрос текстом или голосом.`
 
 var welcomeMarkup = &telego.InlineKeyboardMarkup{
 	InlineKeyboard: [][]telego.InlineKeyboardButton{

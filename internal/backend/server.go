@@ -47,6 +47,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/qrlogin/password", s.handleQRPassword)
 	mux.HandleFunc("/channel_info", s.handleChannelInfo)
 	mux.HandleFunc("/search", s.handleSearch)
+	mux.HandleFunc("/delete_user", s.handleDeleteUser)
 	return mux
 }
 
@@ -242,6 +243,20 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, results)
+}
+
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID int64 `json:"user_id"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if err := s.mgr.DeleteSession(req.UserID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func decode(w http.ResponseWriter, r *http.Request, dst any) bool {

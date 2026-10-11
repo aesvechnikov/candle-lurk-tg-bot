@@ -41,6 +41,15 @@ func (m *Manager) sessionPath(userID int64) string {
 	return filepath.Join(m.dataDir, "sessions", fmt.Sprintf("%d.session", userID))
 }
 
+// DeleteSession removes the user's MTProto session file. A missing file is
+// treated as already deleted (idempotent).
+func (m *Manager) DeleteSession(userID int64) error {
+	if err := os.Remove(m.sessionPath(userID)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // QRLogin runs the Telegram QR-code login flow. onToken is called each time a
 // login token is (re)generated, with the login URL and a PNG-encoded QR image.
 // If the account has two-step verification, onPass is called once the QR is

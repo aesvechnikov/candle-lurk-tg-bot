@@ -95,6 +95,11 @@ func (c *Client) Search(ctx context.Context, userID int64, channels []string, qu
 	return results, nil
 }
 
+// DeleteUser removes the user's MTProto session on the backend.
+func (c *Client) DeleteUser(ctx context.Context, userID int64) error {
+	return c.post(ctx, "/delete_user", map[string]any{"user_id": userID}, nil)
+}
+
 func (c *Client) post(ctx context.Context, path string, body any, out any) error {
 	buf, err := json.Marshal(body)
 	if err != nil {

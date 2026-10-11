@@ -145,3 +145,9 @@ func (s *Store) RemoveChannel(userID int64, channel string) error {
 	)
 	return err
 }
+
+// DeleteUser removes all saved data for a user (their channel list).
+func (s *Store) DeleteUser(userID int64) error {
+	_, err := s.db.Exec(`DELETE FROM channels WHERE user_id = ?`, userID)
+	return err
+}
