@@ -10,35 +10,51 @@ Telegram-бот, который отвечает на вопросы, ища и�
 
 ## Архитектура
 
-```
-пользователь --вопрос--> [bot (telego)] --создаёт сессию--> [opencode serve] (agent answer, skills, DeepSeek)
-                                                            |  вызывает инструмент search_tg
-                                                            v
-                                              [mcp (mcp-go, stdio)] --HTTP--> [backend (gotd, MTProto)]
-                                                                              |  сессия пользователя, messages.search
-                                                                              v
-                                                              результаты + ссылки t.me --> ответ в Telegram
+```plantuml
+@startuml
+actor Пользователь
+participant "bot (telego)" as Bot
+participant "opencode serve" as OC
+participant "mcp (mcp-go)" as MCP
+participant "backend (gotd)" as Backend
+database "Telegram" as TG
+
+Пользователь -> Bot: вопрос
+Bot -> OC: POST /session + /message (agent=answer)
+activate OC
+OC -> MCP: search_tg(user_id, channels, query)
+activate MCP
+MCP -> Backend: POST /search
+activate Backend
+Backend -> TG: messages.search
+TG --> Backend: сообщения
+Backend --> MCP: результаты + ссылки t.me
+deactivate Backend
+MCP --> OC: результаты (JSON)
+deactivate MCP
+OC --> Bot: текст ответа
+deactivate OC
+Bot --> Пользователь: ответ (Markdown → HTML)
+@enduml
 ```
 
 Три процесса:
 
 | Бинарь | Роль |
 |---|---|
-| `bot` | Telegram-фронтенд: команды, вход, вызов OpenCode, отправка ответа |
+| `bot` | Telegram-фронтенд: команды, QR-вход, вызов OpenCode, отправка ответа |
 | `backend` | MTProto-бэкенд: per-user сессии (зашифрованы AES-256-GCM), вход и поиск |
 | `mcp` | MCP-сервер (stdio), который OpenCode запускает как `tg-search` и который проксирует `search_tg` в backend |
 
-Каждый пользователь логинится **своим** Telegram-аккаунтом (`/login <телефон>`,
-код и 2FA приходят отдельными сообщениями), поэтому бот ищет и в приватных каналах,
-к которым у пользователя есть доступ. Сессии хранятся зашифрованными на диске.
+Каждый пользователь логинится **своим** Telegram-аккаунтом через QR-код (`/qrlogin`),
+поэтому бот ищет и в приватных каналах, к которым у пользователя есть доступ.
+Сессии хранятся зашифрованными на диске.
 
 ## Команды бота
 
-- `/qrlogin` — вход через QR-код (основной способ; сканируете и подтверждаете на телефоне, при 2FA — вводите пароль).
-- `/login <телефон>` — вход по номеру телефона (код + 2FA). С IP дата-центра Telegram часто блокирует этот способ — см. «Вход с VPS».
-- `/import_session <json>` — импорт сессии, сгенерированной на чистом IP (см. «Вход с VPS»).
-- `/set_channels @ch1 @ch2` — задать список каналов.
-- `/add_channel @ch` / `/remove_channel @ch` — добавить/убрать канал.
+- `/qrlogin` — вход через QR-код (сканируете и подтверждаете на телефоне, при 2FA — вводите пароль).
+- `/add_channel @ch` — добавить канал.
+- `/remove_channel @ch` — убрать канал.
 - `/list_channels` — показать сохранённые каналы.
 - обычное сообщение — вопрос, на который бот ищет ответ.
 
@@ -144,6 +160,15 @@ sudo systemctl enable --now backend.service opencode-serve.service bot.service
 Сервисы работают от системного пользователя `lurk_ai_bot` в группе `users`;
 каталог бота — `/opt/candle-lurk-tg-bot`, env-файл — `/etc/candle-lurk-tg-bot/env`.
 
+## CI/CD (GitHub Actions)
+
+`.github/workflows/deploy.yml` на каждый push в `main`:
+собирает бинарники на ubuntu-латере (`GOOS=linux GOARCH=amd64`), копирует их вместе с
+`.opencode/` и `opencode.json` на сервер под пользователем `deploy`, затем выполняет
+`sudo /usr/local/bin/deploy-candle` (установка + перезапуск сервисов).
+
+Секреты репозитория: `DEPLOY_SSH_KEY` (приватный ключ), `DEPLOY_HOST`, `DEPLOY_USER`.
+
 ## Как устроена обработка (OpenCode)
 
 - Агент `answer` (`.opencode/agent/answer.md`) — роль и правила.
@@ -159,31 +184,16 @@ sudo systemctl enable --now backend.service opencode-serve.service bot.service
 - Telegram ищет по точному подстрочному совпадению, не по смыслу. Качество зависит
   от того, как агент выделит ключевые слова.
 - Поиск работает только в каналах, доступных аккаунту пользователя.
-- Вход по коду (`/login`) с IP дата-центра блокируется Telegram (`PHONE_CODE_EXPIRED`);
-  основной путь — QR-вход (`/qrlogin`) или импорт сессии (`/import_session`).
 
-## Вход с VPS
+## Вход
 
-Telegram аннулирует коды входа (`PHONE_CODE_EXPIRED`) и быстро гасит QR-токены,
-когда логин идёт с IP дата-центра. Два рабочих способа:
+Единственный способ входа — QR-код (`/qrlogin`): бот присылает картинку, вы сканируете
+её на телефоне (Telegram → Настройки → Устройства → Подключить устройство), подтверждаете,
+при включённой 2FA вводите пароль.
 
-**1. QR-вход (основной, для обычных пользователей).** `/qrlogin` — бот присылает
-картинку QR-кода. Отсканируйте её на телефоне (Telegram → Настройки → Устройства →
-Подключить устройство), подтвердите вход, при включённой 2FA введите пароль.
-
-**2. Импорт сессии (запасной).** Сгенерируйте сессию на машине с чистым IP:
-
-```bash
-# на домашнем ПК/ноутбуке, из корня репозитория:
-go run ./cmd/login-gen <api_id> <api_hash> <телефон>
-# программа попросит код (и 2FA) и выведет JSON сессии на stdout
-```
-
-Скопируйте вывод и отправьте боту:
-
-```
-/import_session <json>
-```
+С IP дата-центра Telegram блокирует вход по коду (`PHONE_CODE_EXPIRED`) и быстро гасит
+QR-токены, поэтому QR-вход — основной путь для обычных пользователей. Сообщение с паролем
+2FA бот удаляет сразу после обработки, чтобы оно не оставалось в истории чата.
 
 ## Безопасность
 

@@ -32,12 +32,7 @@ type Bot struct {
 	allowed map[string]bool
 
 	mu     sync.Mutex
-	logins map[int64]loginState
-}
-
-type loginState struct {
-	step  string // "code", "password" or "qr_password"
-	phone string
+	logins map[int64]bool // chatID -> awaiting the QR 2FA password
 }
 
 func New(
@@ -63,7 +58,7 @@ func New(
 		oc:      oc,
 		model:   model,
 		allowed: allowedMap,
-		logins:  map[int64]loginState{},
+		logins:  map[int64]bool{},
 	}, nil
 }
 
@@ -85,10 +80,7 @@ func (b *Bot) Run(ctx context.Context) error {
 // when the user types "/".
 func (b *Bot) registerCommands(ctx context.Context) error {
 	commands := []telego.BotCommand{
-		{Command: "login", Description: "вход по номеру телефона"},
 		{Command: "qrlogin", Description: "вход через QR-код"},
-		{Command: "import_session", Description: "импорт готовой сессии"},
-		{Command: "set_channels", Description: "задать каналы для поиска"},
 		{Command: "add_channel", Description: "добавить канал"},
 		{Command: "remove_channel", Description: "убрать канал"},
 		{Command: "list_channels", Description: "показать каналы"},
@@ -111,19 +103,14 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 		return
 	}
 
-	if strings.HasPrefix(strings.ToLower(text), "/import_session") {
-		b.handleImportSession(ctx, chatID, text)
-		return
-	}
-
 	if strings.HasPrefix(text, "/") {
 		b.handleCommand(ctx, chatID, text)
 		return
 	}
 
-	// Plain text: either a login step or a question.
-	if b.inLogin(chatID) {
-		b.handleLoginInput(ctx, chatID, text)
+	// Plain text: either the 2FA password or a question.
+	if b.awaitingPassword(chatID) {
+		b.handleQRPassword(ctx, chatID, text, msg.MessageID)
 		return
 	}
 	b.handleQuestion(ctx, chatID, text)
@@ -137,16 +124,8 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	switch cmd {
 	case "/start", "/help":
 		b.reply(ctx, chatID, helpText)
-	case "/login":
-		if len(args) == 0 {
-			b.reply(ctx, chatID, "Укажите номер телефона в международном формате:\n/login +79991234567")
-			return
-		}
-		b.startLogin(ctx, chatID, args[0])
 	case "/qrlogin":
 		b.startQRLogin(ctx, chatID)
-	case "/set_channels":
-		b.setChannels(ctx, chatID, args)
 	case "/add_channel":
 		b.addChannels(ctx, chatID, args)
 	case "/remove_channel":
@@ -180,13 +159,13 @@ func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
 			b.reply(ctx, chatID, "Готово, вход выполнен.")
 			return
 		case "password":
-			b.setLogin(chatID, loginState{step: "qr_password"})
+			b.setAwaitingPassword(chatID)
 			b.reply(ctx, chatID, "Введите пароль двухфакторной аутентификации:")
 			return
 		case "refresh":
 			refreshes++
 			if refreshes > maxRefreshes {
-				b.reply(ctx, chatID, "QR-код истекает слишком часто. Попробуйте /qrlogin ещё раз или используйте /import_session.")
+				b.reply(ctx, chatID, "QR-код истекает слишком часто. Попробуйте /qrlogin ещё раз.")
 				return
 			}
 			b.sendQR(ctx, chatID, newPNG, newURL)
@@ -229,90 +208,27 @@ type namedBytes struct {
 
 func (n namedBytes) Name() string { return n.name }
 
-func (b *Bot) handleImportSession(ctx context.Context, chatID int64, text string) {
-	sessionData := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(text), "/import_session"))
-	if sessionData == "" {
-		b.reply(ctx, chatID, "Укажите сессию: /import_session <содержимое session.json>")
-		return
-	}
-	if err := b.backend.ImportSession(ctx, chatID, sessionData); err != nil {
-		b.reply(ctx, chatID, "Ошибка импорта сессии: "+err.Error())
-		return
-	}
-	b.reply(ctx, chatID, "Сессия импортирована. Теперь можно задавать вопросы.")
-}
+// handleQRPassword submits the QR 2FA password and deletes the user's message
+// so the password does not linger in the chat history.
+func (b *Bot) handleQRPassword(ctx context.Context, chatID int64, password string, messageID int) {
+	b.clearAwaitingPassword(chatID)
+	b.deleteMessage(ctx, chatID, messageID)
 
-func (b *Bot) startLogin(ctx context.Context, chatID int64, phone string) {
-	status, err := b.backend.LoginStart(ctx, chatID, phone)
+	status, err := b.backend.QRLoginPassword(ctx, chatID, password)
 	if err != nil {
-		b.reply(ctx, chatID, "Не удалось начать вход: "+err.Error())
+		b.reply(ctx, chatID, friendlyLoginError(err))
 		return
 	}
-	switch status {
-	case "code":
-		b.setLogin(chatID, loginState{step: "code", phone: phone})
-		b.reply(ctx, chatID, "Введите код, который Telegram прислал вам в личку:")
-	case "done":
-		_ = b.store.UpsertUser(chatID, phone)
-		b.reply(ctx, chatID, "Вы уже авторизованы.")
+	if status == "done" {
+		b.reply(ctx, chatID, "Готово, вход выполнен.")
 	}
 }
 
-func (b *Bot) handleLoginInput(ctx context.Context, chatID int64, text string) {
-	state := b.getLogin(chatID)
-	switch state.step {
-	case "code":
-		status, err := b.backend.LoginCode(ctx, chatID, text)
-		if err != nil {
-			b.clearLogin(chatID)
-			b.reply(ctx, chatID, friendlyLoginError(err))
-			return
-		}
-		switch status {
-		case "password":
-			b.setLogin(chatID, loginState{step: "password", phone: state.phone})
-			b.reply(ctx, chatID, "Введите пароль двухфакторной аутентификации:")
-		case "done":
-			b.clearLogin(chatID)
-			_ = b.store.UpsertUser(chatID, state.phone)
-			b.reply(ctx, chatID, "Готово, вход выполнен.")
-		}
-	case "password":
-		status, err := b.backend.LoginPassword(ctx, chatID, text)
-		if err != nil {
-			b.clearLogin(chatID)
-			b.reply(ctx, chatID, friendlyLoginError(err))
-			return
-		}
-		if status == "done" {
-			b.clearLogin(chatID)
-			_ = b.store.UpsertUser(chatID, state.phone)
-			b.reply(ctx, chatID, "Готово, вход выполнен.")
-		}
-	case "qr_password":
-		status, err := b.backend.QRLoginPassword(ctx, chatID, text)
-		if err != nil {
-			b.clearLogin(chatID)
-			b.reply(ctx, chatID, friendlyLoginError(err))
-			return
-		}
-		if status == "done" {
-			b.clearLogin(chatID)
-			b.reply(ctx, chatID, "Готово, вход выполнен.")
-		}
-	}
-}
-
-func (b *Bot) setChannels(ctx context.Context, chatID int64, channels []string) {
-	if len(channels) == 0 {
-		b.reply(ctx, chatID, "Укажите каналы: /set_channels @channel1 @channel2")
-		return
-	}
-	if err := b.store.SetChannels(chatID, channels); err != nil {
-		b.reply(ctx, chatID, "Ошибка: "+err.Error())
-		return
-	}
-	b.listChannels(ctx, chatID)
+func (b *Bot) deleteMessage(ctx context.Context, chatID int64, messageID int) {
+	_ = b.tele.DeleteMessage(ctx, &telego.DeleteMessageParams{
+		ChatID:    telego.ChatID{ID: chatID},
+		MessageID: messageID,
+	})
 }
 
 func (b *Bot) addChannels(ctx context.Context, chatID int64, channels []string) {
@@ -345,7 +261,7 @@ func (b *Bot) listChannels(ctx context.Context, chatID int64) {
 		return
 	}
 	if len(channels) == 0 {
-		b.reply(ctx, chatID, "Каналы не заданы. Добавьте: /set_channels @channel1 @channel2")
+		b.reply(ctx, chatID, "Каналы не заданы. Добавьте: /add_channel @channel1")
 		return
 	}
 	b.reply(ctx, chatID, "Каналы:\n"+strings.Join(channels, "\n"))
@@ -358,7 +274,7 @@ func (b *Bot) handleQuestion(ctx context.Context, chatID int64, question string)
 		return
 	}
 	if len(channels) == 0 {
-		b.reply(ctx, chatID, "Сначала добавьте каналы: /set_channels @channel1 @channel2")
+		b.reply(ctx, chatID, "Сначала добавьте каналы: /add_channel @channel1")
 		return
 	}
 
@@ -426,26 +342,19 @@ func (b *Bot) isAllowed(from *telego.User) bool {
 	return b.allowed[strings.ToLower(from.Username)]
 }
 
-func (b *Bot) setLogin(chatID int64, s loginState) {
+func (b *Bot) setAwaitingPassword(chatID int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.logins[chatID] = s
+	b.logins[chatID] = true
 }
 
-func (b *Bot) getLogin(chatID int64) loginState {
+func (b *Bot) awaitingPassword(chatID int64) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.logins[chatID]
 }
 
-func (b *Bot) inLogin(chatID int64) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	_, ok := b.logins[chatID]
-	return ok
-}
-
-func (b *Bot) clearLogin(chatID int64) {
+func (b *Bot) clearAwaitingPassword(chatID int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.logins, chatID)
@@ -460,7 +369,7 @@ func buildPrompt(chatID int64, channels []string, question string) string {
 Вопрос пользователя: %s
 
 Действуй по шагам:
-1. Выдели из вопроса 1–4 конкретных поисковых запроса (отдельные слова или короткие фразы).
+1. Выдели из вопроса 1–2 конкретных поисковых запроса (отдельные слова или короткие фразы).
 2. Для каждого запроса вызови инструмент search_tg, передав user_id=%d, channels и query.
 3. Собери короткий ответ на русском, по существу, с ссылками на источники (поле link в результатах).
 
@@ -490,10 +399,7 @@ func splitMessage(text string, limit int) []string {
 const helpText = `Бот ищет ответы по вашим Telegram-каналам.
 
 Команды:
-/login <телефон> — вход в ваш аккаунт Telegram (код и 2FA придут отдельными сообщениями).
 /qrlogin — вход через QR-код (сканируете и подтверждаете на телефоне).
-/import_session <json> — импорт сессии, сгенерированной на чистом IP (см. login-gen).
-/set_channels @ch1 @ch2 — задать список каналов.
 /add_channel @ch1 — добавить канал.
 /remove_channel @ch1 — убрать канал.
 /list_channels — показать каналы.

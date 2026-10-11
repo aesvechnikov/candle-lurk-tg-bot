@@ -16,17 +16,7 @@ import (
 type Server struct {
 	mgr       *tg.Manager
 	mu        sync.Mutex
-	pending   map[int64]*pendingLogin
 	qrPending map[int64]*pendingQR
-}
-
-type pendingLogin struct {
-	codeCh  chan string
-	passCh  chan string
-	codeReq chan struct{}
-	passReq chan struct{}
-	done    chan error
-	cancel  context.CancelFunc
 }
 
 type qrData struct {
@@ -45,7 +35,6 @@ type pendingQR struct {
 func NewServer(mgr *tg.Manager) *Server {
 	return &Server{
 		mgr:       mgr,
-		pending:   map[int64]*pendingLogin{},
 		qrPending: map[int64]*pendingQR{},
 	}
 }
@@ -53,10 +42,6 @@ func NewServer(mgr *tg.Manager) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/login/start", s.handleLoginStart)
-	mux.HandleFunc("/login/code", s.handleLoginCode)
-	mux.HandleFunc("/login/password", s.handleLoginPassword)
-	mux.HandleFunc("/import", s.handleImport)
 	mux.HandleFunc("/qrlogin/start", s.handleQRStart)
 	mux.HandleFunc("/qrlogin/poll", s.handleQRPoll)
 	mux.HandleFunc("/qrlogin/password", s.handleQRPassword)
@@ -65,133 +50,6 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-func (s *Server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UserID int64  `json:"user_id"`
-		Phone  string `json:"phone"`
-	}
-	if !decode(w, r, &req) {
-		return
-	}
-	if req.Phone == "" {
-		writeError(w, http.StatusBadRequest, "phone is required")
-		return
-	}
-
-	s.mu.Lock()
-	if _, ok := s.pending[req.UserID]; ok {
-		s.mu.Unlock()
-		writeError(w, http.StatusConflict, "login already in progress")
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	pa := &pendingLogin{
-		codeCh:  make(chan string, 1),
-		passCh:  make(chan string, 1),
-		codeReq: make(chan struct{}),
-		passReq: make(chan struct{}),
-		done:    make(chan error, 1),
-		cancel:  cancel,
-	}
-	s.pending[req.UserID] = pa
-	s.mu.Unlock()
-
-	go func() {
-		pa.done <- s.mgr.Login(ctx, req.UserID, req.Phone, pa.codeCh, pa.passCh,
-			func() { close(pa.codeReq) }, func() { close(pa.passReq) })
-	}()
-
-	select {
-	case <-pa.codeReq:
-		writeJSON(w, http.StatusOK, map[string]string{"status": "code"})
-	case err := <-pa.done:
-		s.cleanup(req.UserID)
-		writeLoginResult(w, err)
-	case <-ctx.Done():
-		s.cleanup(req.UserID)
-		writeError(w, http.StatusRequestTimeout, "login timed out")
-	}
-}
-
-func (s *Server) handleLoginCode(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UserID int64  `json:"user_id"`
-		Code   string `json:"code"`
-	}
-	if !decode(w, r, &req) {
-		return
-	}
-
-	pa := s.get(req.UserID)
-	if pa == nil {
-		writeError(w, http.StatusNotFound, "no login in progress")
-		return
-	}
-
-	select {
-	case pa.codeCh <- req.Code:
-	default:
-	}
-
-	select {
-	case <-pa.passReq:
-		writeJSON(w, http.StatusOK, map[string]string{"status": "password"})
-	case err := <-pa.done:
-		s.cleanup(req.UserID)
-		writeLoginResult(w, err)
-	case <-time.After(90 * time.Second):
-		writeError(w, http.StatusRequestTimeout, "login step timed out")
-	}
-}
-
-func (s *Server) handleLoginPassword(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UserID   int64  `json:"user_id"`
-		Password string `json:"password"`
-	}
-	if !decode(w, r, &req) {
-		return
-	}
-
-	pa := s.get(req.UserID)
-	if pa == nil {
-		writeError(w, http.StatusNotFound, "no login in progress")
-		return
-	}
-
-	select {
-	case pa.passCh <- req.Password:
-	default:
-	}
-
-	select {
-	case err := <-pa.done:
-		s.cleanup(req.UserID)
-		writeLoginResult(w, err)
-	case <-time.After(90 * time.Second):
-		writeError(w, http.StatusRequestTimeout, "login step timed out")
-	}
-}
-
-func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UserID  int64  `json:"user_id"`
-		Session string `json:"session"`
-	}
-	if !decode(w, r, &req) {
-		return
-	}
-	if req.Session == "" {
-		writeError(w, http.StatusBadRequest, "session is required")
-		return
-	}
-	if err := s.mgr.ImportSession(req.UserID, []byte(req.Session)); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -363,29 +221,6 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, results)
-}
-
-func (s *Server) get(userID int64) *pendingLogin {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.pending[userID]
-}
-
-func (s *Server) cleanup(userID int64) {
-	s.mu.Lock()
-	if pa, ok := s.pending[userID]; ok {
-		pa.cancel()
-		delete(s.pending, userID)
-	}
-	s.mu.Unlock()
-}
-
-func writeLoginResult(w http.ResponseWriter, err error) {
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "done"})
 }
 
 func decode(w http.ResponseWriter, r *http.Request, dst any) bool {

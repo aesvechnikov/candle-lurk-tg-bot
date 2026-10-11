@@ -30,49 +30,6 @@ func NewClient(addr string) *Client {
 	}
 }
 
-// LoginStart requests a login code. It returns "code" once the code has been
-// requested from Telegram.
-func (c *Client) LoginStart(ctx context.Context, userID int64, phone string) (string, error) {
-	var resp struct {
-		Status string `json:"status"`
-	}
-	err := c.post(ctx, "/login/start", map[string]any{"user_id": userID, "phone": phone}, &resp)
-	if err != nil {
-		return "", err
-	}
-	return resp.Status, nil
-}
-
-// LoginCode submits the received code. It returns "password" if 2FA is
-// required, or "done" on success.
-func (c *Client) LoginCode(ctx context.Context, userID int64, code string) (string, error) {
-	var resp struct {
-		Status string `json:"status"`
-	}
-	err := c.post(ctx, "/login/code", map[string]any{"user_id": userID, "code": code}, &resp)
-	if err != nil {
-		return "", err
-	}
-	return resp.Status, nil
-}
-
-// LoginPassword submits the 2FA password. It returns "done" on success.
-func (c *Client) LoginPassword(ctx context.Context, userID int64, password string) (string, error) {
-	var resp struct {
-		Status string `json:"status"`
-	}
-	err := c.post(ctx, "/login/password", map[string]any{"user_id": userID, "password": password}, &resp)
-	if err != nil {
-		return "", err
-	}
-	return resp.Status, nil
-}
-
-// ImportSession stores a pre-generated session JSON for the user.
-func (c *Client) ImportSession(ctx context.Context, userID int64, session string) error {
-	return c.post(ctx, "/import", map[string]any{"user_id": userID, "session": session}, nil)
-}
-
 // QRLoginStart starts a QR login and returns the login URL and a base64 PNG
 // of the QR code to show the user.
 func (c *Client) QRLoginStart(ctx context.Context, userID int64) (url, pngBase64 string, err error) {

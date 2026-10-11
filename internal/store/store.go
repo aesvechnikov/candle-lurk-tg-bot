@@ -28,11 +28,6 @@ func Open(path string) (*Store, error) {
 
 func migrate(db *sql.DB) error {
 	const schema = `
-CREATE TABLE IF NOT EXISTS users (
-	user_id    INTEGER PRIMARY KEY,
-	phone      TEXT NOT NULL DEFAULT '',
-	created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-);
 CREATE TABLE IF NOT EXISTS channels (
 	user_id  INTEGER NOT NULL,
 	channel  TEXT NOT NULL,
@@ -45,17 +40,6 @@ CREATE TABLE IF NOT EXISTS channels (
 }
 
 func (s *Store) Close() error { return s.db.Close() }
-
-// UpsertUser records (or refreshes) the phone number associated with a
-// Telegram user id.
-func (s *Store) UpsertUser(userID int64, phone string) error {
-	_, err := s.db.Exec(
-		`INSERT INTO users (user_id, phone) VALUES (?, ?)
-		 ON CONFLICT(user_id) DO UPDATE SET phone = excluded.phone`,
-		userID, phone,
-	)
-	return err
-}
 
 // ListChannels returns the saved channels for a user in insertion order.
 func (s *Store) ListChannels(userID int64) ([]string, error) {
@@ -76,27 +60,6 @@ func (s *Store) ListChannels(userID int64) ([]string, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
-}
-
-// SetChannels replaces the saved channel list for a user.
-func (s *Store) SetChannels(userID int64, channels []string) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.Exec(`DELETE FROM channels WHERE user_id = ?`, userID); err != nil {
-		return err
-	}
-	for _, c := range channels {
-		if _, err := tx.Exec(
-			`INSERT OR IGNORE INTO channels (user_id, channel) VALUES (?, ?)`, userID, c,
-		); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
 }
 
 // AddChannels appends channels to a user's saved list (deduplicated).

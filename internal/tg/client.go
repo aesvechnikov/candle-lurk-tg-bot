@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/gotd/td/telegram"
-	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
@@ -40,17 +39,6 @@ func NewManager(apiID int, apiHash string, sessKey []byte, dataDir string) *Mana
 
 func (m *Manager) sessionPath(userID int64) string {
 	return filepath.Join(m.dataDir, "sessions", fmt.Sprintf("%d.session", userID))
-}
-
-// ImportSession stores a pre-generated session (e.g. produced by login-gen on
-// a trusted IP) into the user's encrypted session slot. The data must be the
-// raw session bytes as produced by gotd's session storage.
-func (m *Manager) ImportSession(userID int64, sessionData []byte) error {
-	st, err := NewEncryptedStorage(m.sessionPath(userID), m.sessKey)
-	if err != nil {
-		return err
-	}
-	return st.StoreSession(context.Background(), sessionData)
 }
 
 // QRLogin runs the Telegram QR-code login flow. onToken is called each time a
@@ -130,87 +118,6 @@ func (m *Manager) newClient(userID int64) (*telegram.Client, error) {
 	}), nil
 }
 
-// interactiveUserAuth implements auth.UserAuthenticator, feeding the phone,
-// code and 2FA password from channels controlled by the HTTP login flow.
-type interactiveUserAuth struct {
-	phone  string
-	codeCh <-chan string
-	passCh <-chan string
-	onCode func()
-	onPass func()
-}
-
-func (a *interactiveUserAuth) Phone(_ context.Context) (string, error) { return a.phone, nil }
-
-func (a *interactiveUserAuth) Code(ctx context.Context, sentCode *tg.AuthSentCode) (string, error) {
-	if a.onCode != nil {
-		a.onCode()
-	}
-	codeType := ""
-	if sentCode.Type != nil {
-		codeType = sentCode.Type.TypeName()
-	}
-	log.Printf("login: code requested type=%s", codeType)
-	select {
-	case code := <-a.codeCh:
-		return code, nil
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-}
-
-func (a *interactiveUserAuth) Password(ctx context.Context) (string, error) {
-	if a.onPass != nil {
-		a.onPass()
-	}
-	log.Printf("login: 2FA password requested")
-	select {
-	case p := <-a.passCh:
-		return p, nil
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-}
-
-func (a *interactiveUserAuth) AcceptTermsOfService(_ context.Context, _ tg.HelpTermsOfService) error {
-	return fmt.Errorf("telegram terms-of-service confirmation is not supported by the bot")
-}
-
-func (a *interactiveUserAuth) SignUp(_ context.Context) (auth.UserInfo, error) {
-	return auth.UserInfo{}, fmt.Errorf("telegram sign-up is not supported by the bot")
-}
-
-// Login authenticates the user's MTProto session. It blocks until the code
-// (and, if needed, the 2FA password) is fed through the provided channels.
-func (m *Manager) Login(
-	ctx context.Context,
-	userID int64,
-	phone string,
-	codeCh, passCh <-chan string,
-	onCode, onPass func(),
-) error {
-	client, err := m.newClient(userID)
-	if err != nil {
-		return err
-	}
-	phone = normalizePhone(phone)
-	log.Printf("login: start user=%d phone=%q", userID, phone)
-
-	// Always start from a clean slate: a previously failed attempt may have
-	// persisted an unregistered temp auth key, which gotd restores and then
-	// has to re-register mid-flow (AUTH_KEY_UNREGISTERED), invalidating the
-	// freshly sent code with PHONE_CODE_EXPIRED.
-	_ = os.Remove(m.sessionPath(userID))
-
-	ua := &interactiveUserAuth{phone: phone, codeCh: codeCh, passCh: passCh, onCode: onCode, onPass: onPass}
-	flow := auth.NewFlow(ua, auth.SendCodeOptions{})
-	err = client.Run(ctx, func(ctx context.Context) error {
-		return client.Auth().IfNecessary(ctx, flow)
-	})
-	log.Printf("login: result user=%d err=%v", userID, err)
-	return err
-}
-
 // Search looks for the given query in the listed channels using the user's
 // own MTProto session and returns up to limit hits per channel.
 func (m *Manager) Search(
@@ -235,7 +142,7 @@ func (m *Manager) Search(
 			return fmt.Errorf("auth status: %w", err)
 		}
 		if !status.Authorized {
-			return fmt.Errorf("user %d is not authorized, run /login first", userID)
+			return fmt.Errorf("user %d is not authorized, run /qrlogin first", userID)
 		}
 
 		api := client.API()
@@ -275,19 +182,6 @@ func (m *Manager) Search(
 
 func cleanUsername(raw string) string {
 	return strings.TrimPrefix(strings.TrimSpace(raw), "@")
-}
-
-// normalizePhone keeps only digits, so "+79991234567" becomes "79991234567".
-// Telegram expects the phone without the "+" in auth.signIn; sending it with
-// the "+" can surface as PHONE_CODE_EXPIRED.
-func normalizePhone(phone string) string {
-	var b strings.Builder
-	for _, r := range phone {
-		if r >= '0' && r <= '9' {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }
 
 // resolveChannel resolves a username to an InputPeerChannel and returns the
