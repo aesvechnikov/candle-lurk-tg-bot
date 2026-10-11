@@ -25,11 +25,6 @@ type Result struct {
 	Link      string `json:"link,omitempty"`
 }
 
-// SharedUserID is the pseudo user id under which the shared (service) MTProto
-// session lives. It backs anonymous access to public channels when a user has
-// not logged in with their own account.
-const SharedUserID int64 = 0
-
 // Manager wraps gotd clients: one encrypted session per Telegram user id.
 type Manager struct {
 	apiID   int
@@ -43,9 +38,6 @@ func NewManager(apiID int, apiHash string, sessKey []byte, dataDir string) *Mana
 }
 
 func (m *Manager) sessionPath(userID int64) string {
-	if userID == SharedUserID {
-		return filepath.Join(m.dataDir, "sessions", "shared.session")
-	}
 	return filepath.Join(m.dataDir, "sessions", fmt.Sprintf("%d.session", userID))
 }
 
@@ -126,10 +118,8 @@ func (m *Manager) newClient(userID int64) (*telegram.Client, error) {
 	}), nil
 }
 
-// Search looks for the given query in the listed channels. It uses the user's
-// own MTProto session; if the user has not logged in, it falls back to the
-// shared session so that public channels remain searchable without a personal
-// login. Returns up to limit hits per channel.
+// Search looks for the given query in the listed channels using the user's
+// own MTProto session and returns up to limit hits per channel.
 func (m *Manager) Search(
 	ctx context.Context,
 	userID int64,
@@ -140,45 +130,20 @@ func (m *Manager) Search(
 	if limit <= 0 {
 		limit = 20
 	}
-	if userID != SharedUserID {
-		results, authorized, err := m.searchAs(ctx, userID, channels, query, limit)
-		if authorized {
-			return results, err
-		}
-	}
-	results, authorized, err := m.searchAs(ctx, SharedUserID, channels, query, limit)
-	if !authorized {
-		if err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("нет активного входа: выполните /qrlogin или настройте общий аккаунт для публичных каналов")
-	}
-	return results, err
-}
-
-// searchAs runs the search under one session and reports whether that session
-// was authorized (in which case results/err are final) or not (the caller
-// should fall back to the shared session).
-func (m *Manager) searchAs(
-	ctx context.Context,
-	userID int64,
-	channels []string,
-	query string,
-	limit int,
-) (results []Result, authorized bool, err error) {
 	client, err := m.newClient(userID)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
+
+	var results []Result
 	err = client.Run(ctx, func(ctx context.Context) error {
 		status, err := client.Auth().Status(ctx)
 		if err != nil {
 			return fmt.Errorf("auth status: %w", err)
 		}
 		if !status.Authorized {
-			return nil
+			return fmt.Errorf("user %d is not authorized, run /qrlogin first", userID)
 		}
-		authorized = true
 
 		api := client.API()
 		for _, raw := range channels {
@@ -212,40 +177,19 @@ func (m *Manager) searchAs(
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, authorized, err
-	}
-	return results, authorized, nil
+	return results, err
 }
 
 func cleanUsername(raw string) string {
 	return strings.TrimPrefix(strings.TrimSpace(raw), "@")
 }
 
-// ChannelInfo returns the title and description (about) of a channel. It uses
-// the user's own session, falling back to the shared session for anonymous
-// access to public channels. The description may be empty.
+// ChannelInfo returns the title and description (about) of a channel, using
+// the user's own session. The description may be empty.
 func (m *Manager) ChannelInfo(ctx context.Context, userID int64, username string) (title, about string, err error) {
-	if userID != SharedUserID {
-		title, about, authorized, err := m.channelInfoAs(ctx, userID, username)
-		if authorized {
-			return title, about, err
-		}
-	}
-	title, about, authorized, err := m.channelInfoAs(ctx, SharedUserID, username)
-	if !authorized {
-		if err != nil {
-			return "", "", err
-		}
-		return "", "", fmt.Errorf("нет активного входа: выполните /qrlogin или настройте общий аккаунт для публичных каналов")
-	}
-	return title, about, err
-}
-
-func (m *Manager) channelInfoAs(ctx context.Context, userID int64, username string) (title, about string, authorized bool, err error) {
 	client, err := m.newClient(userID)
 	if err != nil {
-		return "", "", false, err
+		return "", "", err
 	}
 	err = client.Run(ctx, func(ctx context.Context) error {
 		status, err := client.Auth().Status(ctx)
@@ -253,13 +197,12 @@ func (m *Manager) channelInfoAs(ctx context.Context, userID int64, username stri
 			return fmt.Errorf("auth status: %w", err)
 		}
 		if !status.Authorized {
-			return nil
+			return fmt.Errorf("user %d is not authorized, run /qrlogin first", userID)
 		}
-		authorized = true
 		title, about, err = channelInfo(ctx, client.API(), cleanUsername(username))
 		return err
 	})
-	return title, about, authorized, err
+	return title, about, err
 }
 
 // channelInfo resolves a username and fetches its title and description.

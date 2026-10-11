@@ -46,7 +46,7 @@ func main() {
 		sttClient = stt.NewClient(cfg.STTAddr)
 	}
 
-	b, err := bot.New(cfg.BotToken, st, backendClient, oc, cfg.OpenCodeModel, cfg.AllowedUsers, cfg.AdminUsers, sttClient, cfg.STTEnabled)
+	b, err := bot.New(cfg.BotToken, st, backendClient, oc, cfg.OpenCodeModel, cfg.AllowedUsers, sttClient, cfg.STTEnabled)
 	if err != nil {
 		log.Fatal(err)
 	}
