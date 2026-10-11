@@ -16,5 +16,12 @@
 
 - Go-проект, стек: gotd (MTProto), telego (Telegram Bot API), mcp-go, SQLite.
 - Три бинарника (`bot`, `backend`, `mcp`) + headless `opencode serve` с агентом `answer`.
-- Сборка: `go build ./...`. Линт/проверка: `go vet ./...`.
+- Сборка: `go build ./...`. Линк/проверка: `go vet ./...`. Тесты: `go test ./...`.
 - Не коммить `.env`, `data/`, `bin/`, `dist/`.
+
+## Синхронизация документации
+
+- При изменении потоков вызовов обновляй диаграмму: исходник `docs/architecture.puml`,
+  затем перегенерируй картинку (`plantuml -tpng docs/architecture.puml`) и при
+  изменении `architecture.puml` переименуй PNG (GitHub агрессивно кэширует картинки).
+- При изменении схемы БД (`internal/store/store.go`) обновляй раздел «Схема БД» в README.
