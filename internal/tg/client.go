@@ -127,6 +127,30 @@ func (m *Manager) newClient(userID int64) (*telegram.Client, error) {
 	}), nil
 }
 
+// Authorized reports whether the user has a valid MTProto session.
+func (m *Manager) Authorized(ctx context.Context, userID int64) (bool, error) {
+	if _, err := os.Stat(m.sessionPath(userID)); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	client, err := m.newClient(userID)
+	if err != nil {
+		return false, err
+	}
+	authorized := false
+	err = client.Run(ctx, func(ctx context.Context) error {
+		status, err := client.Auth().Status(ctx)
+		if err != nil {
+			return fmt.Errorf("auth status: %w", err)
+		}
+		authorized = status.Authorized
+		return nil
+	})
+	return authorized, err
+}
+
 // Search looks for the given query in the listed channels using the user's
 // own MTProto session and returns up to limit hits per channel.
 func (m *Manager) Search(

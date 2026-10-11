@@ -100,6 +100,17 @@ func (c *Client) DeleteUser(ctx context.Context, userID int64) error {
 	return c.post(ctx, "/delete_user", map[string]any{"user_id": userID}, nil)
 }
 
+// Authorized reports whether the user has a valid MTProto session.
+func (c *Client) Authorized(ctx context.Context, userID int64) (bool, error) {
+	var resp struct {
+		Authorized bool `json:"authorized"`
+	}
+	if err := c.post(ctx, "/authorized", map[string]any{"user_id": userID}, &resp); err != nil {
+		return false, err
+	}
+	return resp.Authorized, nil
+}
+
 func (c *Client) post(ctx context.Context, path string, body any, out any) error {
 	buf, err := json.Marshal(body)
 	if err != nil {

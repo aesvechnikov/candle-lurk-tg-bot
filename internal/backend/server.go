@@ -47,6 +47,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/qrlogin/password", s.handleQRPassword)
 	mux.HandleFunc("/channel_info", s.handleChannelInfo)
 	mux.HandleFunc("/search", s.handleSearch)
+	mux.HandleFunc("/authorized", s.handleAuthorized)
 	mux.HandleFunc("/delete_user", s.handleDeleteUser)
 	return mux
 }
@@ -243,6 +244,21 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, results)
+}
+
+func (s *Server) handleAuthorized(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID int64 `json:"user_id"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	ok, err := s.mgr.Authorized(r.Context(), req.UserID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"authorized": ok})
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {

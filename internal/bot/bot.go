@@ -198,12 +198,21 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	case "/cancel":
 		b.cancel(ctx, chatID)
 	case "/add_channels":
+		if !b.requireAuth(ctx, chatID) {
+			return
+		}
 		b.setAwaitingAdd(chatID)
 		b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
 	case "/remove_channels":
+		if !b.requireAuth(ctx, chatID) {
+			return
+		}
 		b.setAwaitingRemove(chatID)
 		b.reply(ctx, chatID, b.removePrompt(chatID))
 	case "/list_channels":
+		if !b.requireAuth(ctx, chatID) {
+			return
+		}
 		b.listChannels(ctx, chatID)
 	case "/delete_me":
 		b.deleteMe(ctx, chatID)
@@ -245,6 +254,21 @@ func (b *Bot) cancel(ctx context.Context, chatID int64) {
 	b.clearAwaitingAdd(chatID)
 	b.clearAwaitingRemove(chatID)
 	b.reply(ctx, chatID, "Действие отменено.")
+}
+
+// requireAuth replies and returns false when the user has no active MTProto
+// session, gating channel management and questions behind a login.
+func (b *Bot) requireAuth(ctx context.Context, chatID int64) bool {
+	ok, err := b.backend.Authorized(ctx, chatID)
+	if err != nil {
+		b.reply(ctx, chatID, "Не удалось проверить вход: "+err.Error())
+		return false
+	}
+	if !ok {
+		b.reply(ctx, chatID, "Сначала войдите через /qrlogin.")
+		return false
+	}
+	return true
 }
 
 func (b *Bot) startQRLogin(ctx context.Context, chatID int64) {
@@ -414,6 +438,9 @@ func (b *Bot) deleteMe(ctx context.Context, chatID int64) {
 }
 
 func (b *Bot) handleQuestion(ctx context.Context, chatID int64, question string) {
+	if !b.requireAuth(ctx, chatID) {
+		return
+	}
 	channels, err := b.store.ListChannels(chatID)
 	if err != nil {
 		b.reply(ctx, chatID, "Ошибка: "+err.Error())
