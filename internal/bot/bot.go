@@ -158,7 +158,6 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	fields := strings.Fields(text)
 	cmd := strings.ToLower(fields[0])
-	args := fields[1:]
 
 	switch cmd {
 	case "/start":
@@ -170,19 +169,11 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 	case "/cancel":
 		b.cancelLogin(ctx, chatID)
 	case "/add_channels":
-		if len(args) == 0 {
-			b.setAwaitingAdd(chatID)
-			b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
-			return
-		}
-		b.addChannels(ctx, chatID, args)
+		b.setAwaitingAdd(chatID)
+		b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
 	case "/remove_channels":
-		if len(args) == 0 {
-			b.setAwaitingRemove(chatID)
-			b.reply(ctx, chatID, b.removePrompt(chatID))
-			return
-		}
-		b.removeChannels(ctx, chatID, args)
+		b.setAwaitingRemove(chatID)
+		b.reply(ctx, chatID, b.removePrompt(chatID))
 	case "/list_channels":
 		b.listChannels(ctx, chatID)
 	default:
@@ -323,7 +314,7 @@ func (b *Bot) deleteMessage(ctx context.Context, chatID int64, messageID int) {
 
 func (b *Bot) addChannels(ctx context.Context, chatID int64, names []string) {
 	if len(names) == 0 {
-		b.reply(ctx, chatID, "Укажите каналы: /add_channels @channel1 @channel2")
+		b.reply(ctx, chatID, "Не получил имена каналов.")
 		return
 	}
 	var channels []store.Channel
@@ -344,7 +335,7 @@ func (b *Bot) addChannels(ctx context.Context, chatID int64, names []string) {
 
 func (b *Bot) removeChannels(ctx context.Context, chatID int64, channels []string) {
 	if len(channels) == 0 {
-		b.reply(ctx, chatID, "Укажите каналы: /remove_channels @channel1")
+		b.reply(ctx, chatID, "Не получил имена каналов.")
 		return
 	}
 	for _, c := range channels {
@@ -360,7 +351,7 @@ func (b *Bot) listChannels(ctx context.Context, chatID int64) {
 		return
 	}
 	if len(channels) == 0 {
-		b.reply(ctx, chatID, "Каналы не заданы. Добавьте: /add_channels @channel1")
+		b.reply(ctx, chatID, "Каналы не заданы. Добавьте их командой /add_channels")
 		return
 	}
 	lines := make([]string, 0, len(channels))
@@ -385,7 +376,7 @@ func (b *Bot) handleQuestion(ctx context.Context, chatID int64, question string)
 		return
 	}
 	if len(channels) == 0 {
-		b.reply(ctx, chatID, "Сначала добавьте каналы: /add_channels @channel1")
+		b.reply(ctx, chatID, "Сначала добавьте каналы командой /add_channels")
 		return
 	}
 
@@ -672,8 +663,8 @@ const helpText = `👋 Привет! Я ищу ответы по вашим Tele
 
 Команды:
 🔑 /qrlogin — войти через QR-код.
-➕ /add_channels @ch1 @ch2 — добавить каналы.
-➖ /remove_channels @ch1 @ch2 — убрать каналы.
+➕ /add_channels — добавить каналы.
+➖ /remove_channels — убрать каналы.
 📋 /list_channels — мои каналы.
 ❌ /cancel — отменить вход.
 
