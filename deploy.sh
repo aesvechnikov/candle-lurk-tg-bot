@@ -13,8 +13,9 @@ set -euo pipefail
 
 REPO_URL="https://github.com/aesvechnikov/candle-lurk-tg-bot.git"
 INSTALL_DIR="/opt/candle-lurk-tg-bot"
-SERVICE_USER="candle"
-SERVICE_HOME="/home/candle"
+SERVICE_GROUP="lurk"
+SERVICE_USER="lurk_ai_bot"
+SERVICE_HOME="/home/lurk_ai_bot"
 ENV_FILE="/etc/candle-lurk-tg-bot/env"
 GO_VERSION="${GO_VERSION:-1.26.2}"
 
@@ -58,11 +59,15 @@ export PATH="/usr/local/go/bin:$PATH"
 log "go $(go version | awk '{print $3}')"
 
 # ---------------------------------------------------------------------------
-# 3. Service user
+# 3. Service group and user
 # ---------------------------------------------------------------------------
+if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
+  log "creating group ${SERVICE_GROUP}"
+  groupadd "$SERVICE_GROUP"
+fi
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
   log "creating user ${SERVICE_USER}"
-  useradd --system --create-home --home-dir "$SERVICE_HOME" --shell /usr/sbin/nologin "$SERVICE_USER"
+  useradd --system --gid "$SERVICE_GROUP" --create-home --home-dir "$SERVICE_HOME" --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
 
 # ---------------------------------------------------------------------------

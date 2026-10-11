@@ -141,6 +141,9 @@ sudo systemctl enable --now backend.service opencode-serve.service bot.service
 
 Все порты слушают только `127.0.0.1` — наружу ничего не открывается.
 
+Сервисы работают от системного пользователя `lurk_ai_bot` в группе `lurk`;
+каталог бота — `/opt/candle-lurk-tg-bot`, env-файл — `/etc/candle-lurk-tg-bot/env`.
+
 ## Как устроена обработка (OpenCode)
 
 - Агент `answer` (`.opencode/agent/answer.md`) — роль и правила.

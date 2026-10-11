@@ -3,8 +3,8 @@ Description=candle-lurk-tg-bot Telegram bot
 After=network.target backend.service opencode-serve.service
 
 [Service]
-User=candle
-Group=candle
+User=lurk_ai_bot
+Group=lurk
 EnvironmentFile=/etc/candle-lurk-tg-bot/env
 WorkingDirectory=/opt/candle-lurk-tg-bot
 ExecStart=/opt/candle-lurk-tg-bot/bin/bot
