@@ -8,6 +8,16 @@ set -euo pipefail
 SRC="${1:-/tmp/deploy}"
 DEST="/opt/tg-lurk-ai-bot"
 
+# Self-update: CI stages a fresh copy of this script as $SRC/deploy-tg.sh. The
+# deploy user's sudo is limited to running /usr/local/bin/deploy-tg, so the only
+# way to refresh it is from inside this script (which runs as root). Install a
+# newer copy and re-exec so the updated code takes effect for this run too.
+if [ -f "$SRC/deploy-tg.sh" ] && ! cmp -s "$SRC/deploy-tg.sh" /usr/local/bin/deploy-tg; then
+  install -m 0755 "$SRC/deploy-tg.sh" /usr/local/bin/deploy-tg
+  echo "updated /usr/local/bin/deploy-tg"
+  exec /usr/local/bin/deploy-tg "$SRC"
+fi
+
 # Бинарники.
 for name in tg-lurk-ai-bot tg-lurk-ai-bot-backend tg-lurk-ai-bot-mcp tg-lurk-ai-bot-stt; do
   if [ -f "$SRC/$name" ]; then
