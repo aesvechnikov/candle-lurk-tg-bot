@@ -234,10 +234,10 @@ fi
 log "installing systemd units"
 cp "$INSTALL_DIR/deploy/"*.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now backend.service opencode-serve.service bot.service stt.service
+systemctl enable --now tg-lurk-ai-bot-backend.service tg-lurk-ai-bot-opencode.service tg-lurk-ai-bot.service tg-lurk-ai-bot-stt.service
 
 log "done. status:"
-systemctl --no-pager --lines=0 status backend.service opencode-serve.service bot.service stt.service \
+systemctl --no-pager --lines=0 status tg-lurk-ai-bot-backend.service tg-lurk-ai-bot-opencode.service tg-lurk-ai-bot.service tg-lurk-ai-bot-stt.service \
   || true
 cat <<EOF
 

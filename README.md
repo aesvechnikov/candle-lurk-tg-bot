@@ -128,7 +128,7 @@ sudo bash deploy.sh
 ```bash
 sudo cp deploy/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now backend.service opencode-serve.service bot.service stt.service
+sudo systemctl enable --now tg-lurk-ai-bot-backend.service tg-lurk-ai-bot-opencode.service tg-lurk-ai-bot.service tg-lurk-ai-bot-stt.service
 ```
 
 Все порты слушают только `127.0.0.1` — наружу ничего не открывается.
@@ -166,7 +166,7 @@ voice → скачать OGG → ffmpeg (PCM 16 кГц) → [stt: Vosk] → те
 - `STT_ENABLED=true` (+ `STT_ADDR`, `STT_MODEL_DIR`) в env;
 - модель `vosk-model-small-ru-0.22` в `STT_MODEL_DIR`;
 - `ffmpeg` и `libvosk.so`;
-- сервис `stt.service` (бинарь `tg-lurk-ai-bot-stt` собирается отдельно с `-tags vosk` и cgo).
+- сервис `tg-lurk-ai-bot-stt.service` (бинарь `tg-lurk-ai-bot-stt` собирается отдельно с `-tags vosk` и cgo).
 
 `deploy.sh` ставит всё это автоматически.
 

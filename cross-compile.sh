@@ -44,7 +44,7 @@ cat <<EOF
 
 Then on the server:
 
-  sudo systemctl stop backend bot opencode-serve
+  sudo systemctl stop tg-lurk-ai-bot-backend tg-lurk-ai-bot tg-lurk-ai-bot-opencode
   sudo cp /tmp/tg-lurk-ai-bot /tmp/tg-lurk-ai-bot-backend /tmp/tg-lurk-ai-bot-mcp /opt/tg-lurk-ai-bot/bin/
   sudo chmod +x /opt/tg-lurk-ai-bot/bin/tg-lurk-ai-bot /opt/tg-lurk-ai-bot/bin/tg-lurk-ai-bot-backend /opt/tg-lurk-ai-bot/bin/tg-lurk-ai-bot-mcp
   sudo SKIP_BUILD=1 bash deploy.sh

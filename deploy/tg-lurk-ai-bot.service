@@ -1,6 +1,6 @@
 [Unit]
 Description=tg-lurk-ai-bot Telegram bot
-After=network.target backend.service opencode-serve.service
+After=network.target tg-lurk-ai-bot-backend.service tg-lurk-ai-bot-opencode.service
 
 [Service]
 User=lurk_ai_bot

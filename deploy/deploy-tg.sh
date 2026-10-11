@@ -57,5 +57,5 @@ for f in "$SRC"/*.service; do
 done
 systemctl daemon-reload
 
-systemctl restart backend bot opencode-serve stt
+systemctl restart tg-lurk-ai-bot-backend tg-lurk-ai-bot tg-lurk-ai-bot-opencode tg-lurk-ai-bot-stt
 echo "services restarted"
