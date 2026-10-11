@@ -1,25 +1,25 @@
 @startuml
 actor Пользователь
-participant "bot (telego)" as Bot
-participant "opencode serve" as OC
-participant "mcp (mcp-go)" as MCP
-participant "backend (gotd)" as Backend
+participant "Бот" as Bot
+participant "Агент (opencode)" as OC
+participant "Поиск (MCP)" as MCP
+participant "Бэкенд (MTProto)" as Backend
 database "Telegram" as TG
 
 Пользователь -> Bot: вопрос
-Bot -> OC: POST /session + /message (agent=answer)
+Bot -> OC: спрашивает агента
 activate OC
-OC -> MCP: search_tg(user_id, channels, query)
+OC -> MCP: просит найти по каналам
 activate MCP
-MCP -> Backend: POST /search
+MCP -> Backend: запрашивает поиск
 activate Backend
-Backend -> TG: messages.search
-TG --> Backend: сообщения
-Backend --> MCP: результаты + ссылки t.me
+Backend -> TG: ищет сообщения
+TG --> Backend: найденные сообщения
+Backend --> MCP: результаты со ссылками
 deactivate Backend
-MCP --> OC: результаты (JSON)
+MCP --> OC: результаты
 deactivate MCP
-OC --> Bot: текст ответа
+OC --> Bot: готовый ответ
 deactivate OC
-Bot --> Пользователь: ответ (Markdown → HTML)
+Bot --> Пользователь: ответ
 @enduml
