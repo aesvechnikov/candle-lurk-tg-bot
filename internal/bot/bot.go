@@ -158,6 +158,12 @@ func (b *Bot) handleUpdate(ctx context.Context, upd telego.Update) {
 		return
 	}
 
+	// A forwarded message while adding channels: add the source channel.
+	if b.awaitingAdd(chatID) && msg.ForwardOrigin != nil {
+		b.handleAddForward(ctx, chatID, msg)
+		return
+	}
+
 	text := strings.TrimSpace(msg.Text)
 	if text == "" {
 		return
@@ -202,7 +208,7 @@ func (b *Bot) handleCommand(ctx context.Context, chatID int64, text string) {
 			return
 		}
 		b.setAwaitingAdd(chatID)
-		b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2")
+		b.reply(ctx, chatID, "Отправьте имена каналов одним сообщением (через пробел):\n@channel1 @channel2\n\nИли перешлите любое сообщение из канала.")
 	case "/remove_channels":
 		if !b.requireAuth(ctx, chatID) {
 			return
@@ -642,6 +648,30 @@ func (b *Bot) handleAddChannelsInput(ctx context.Context, chatID int64, text str
 		return
 	}
 	b.addChannels(ctx, chatID, names)
+}
+
+// handleAddForward adds the channel a forwarded message came from. The add
+// state is kept so several channels can be added by forwarding in a row.
+func (b *Bot) handleAddForward(ctx context.Context, chatID int64, msg *telego.Message) {
+	username := forwardOriginUsername(msg)
+	if username == "" {
+		b.reply(ctx, chatID, "Не удалось определить канал. Перешлите сообщение из публичного канала (у приватного нет логина).")
+		return
+	}
+	b.addChannels(ctx, chatID, []string{"@" + username})
+	b.reply(ctx, chatID, "Можно переслать ещё одно сообщение из канала или написать /cancel.")
+}
+
+// forwardOriginUsername returns the username of the channel a message was
+// forwarded from, or "" for a user forward or a channel without a username.
+func forwardOriginUsername(msg *telego.Message) string {
+	switch origin := msg.ForwardOrigin.(type) {
+	case *telego.MessageOriginChannel:
+		return origin.Chat.Username
+	case *telego.MessageOriginChat:
+		return origin.SenderChat.Username
+	}
+	return ""
 }
 
 func (b *Bot) setAwaitingRemove(chatID int64) {
