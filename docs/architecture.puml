@@ -1,12 +1,19 @@
 @startuml
 actor Пользователь
 participant "Бот" as Bot
+participant "STT (Vosk)" as STT
 participant "Агент (opencode)" as OC
 participant "Поиск (MCP)" as MCP
 participant "Бэкенд (MTProto)" as Backend
 database "Telegram" as TG
 
-Пользователь -> Bot: вопрос
+Пользователь -> Bot: сообщение (текст или голосовое)
+alt голосовое сообщение
+    Bot -> STT: голос (OGG → PCM)
+    activate STT
+    STT --> Bot: распознанный текст
+    deactivate STT
+end
 Bot -> OC: спрашивает агента
 activate OC
 OC -> MCP: просит найти по каналам
